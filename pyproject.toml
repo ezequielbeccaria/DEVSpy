@@ -1,28 +1,28 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["poetry-core>=1.5.0"]
+build-backend = "poetry.core.masonry.api"
 
-[project]
+[tool.poetry]
 name = "devspy"
 version = "0.1.0"
 description = "Python port of Devs-Suite-Facade — headless DEVS simulation with time-limit support"
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "Apache-2.0" }
-authors = [{ name = "Ezequiel Beccaria", email = "ezequielbeccaria@gmail.com" }]
+license = "Apache-2.0"
+authors = ["Ezequiel Beccaria <ezequielbeccaria@gmail.com>"]
 keywords = ["devs", "simulation", "discrete-event", "modeling"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Topic :: Scientific/Engineering :: Simulation",
 ]
-dependencies = []
+packages = [{ include = "devspy", from = "src" }]
 
-[project.optional-dependencies]
-dev = ["pytest>=7", "ruff>=0.4"]
+[tool.poetry.dependencies]
+python = "^3.9"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+ruff = "^0.4"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
