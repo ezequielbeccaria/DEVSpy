@@ -69,13 +69,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "examples"))
 from mm1_queue import run
 ```
 
-## Java parity
-
-If you change anything in `simulation/` or `modeling/`, double-check that
-the [Java mapping](java-mapping.md) page still matches and that the
-behavioural quirks listed there are still preserved (the existing tests
-will catch most regressions, but the parity page is the source of truth).
-
 ## Releasing
 
 1. Bump `version` in `pyproject.toml` (`poetry version patch|minor|major`).

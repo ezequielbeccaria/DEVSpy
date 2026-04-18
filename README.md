@@ -1,6 +1,6 @@
 # DEVSpy
 
-Python 3 port of [Devs-Suite-Facade](https://github.com/ezequielbeccaria/Devs-Suite-Facade): a small, headless engine for simulating discrete-event systems written in [DEVS](https://en.wikipedia.org/wiki/DEVS) form, with both iteration- and time-limited runs.
+A small, headless Python 3 engine for simulating discrete-event systems written in [DEVS](https://en.wikipedia.org/wiki/DEVS) form, with both iteration- and time-limited runs.
 
 ## Install
 
@@ -46,7 +46,6 @@ Full docs live in [`docs/`](docs/index.md):
 - [DEVS concepts](docs/concepts.md) — the formalism in two pages.
 - [API reference](docs/api-reference.md) — every public class and method.
 - [Examples](docs/examples.md) — walk-through of `gpt_model`, `mm1_queue`, `manufacturing_line`.
-- [Java mapping](docs/java-mapping.md) — what each Java type / method became.
 - [Contributing](docs/contributing.md) — dev setup with Poetry, tests, code style.
 
 ## Examples
@@ -59,4 +58,4 @@ poetry run python examples/manufacturing_line.py   # 3-station hierarchical line
 
 ## Scope
 
-Ports the headless DEVS simulation core. Not ported: DEVSJAVA's `GenCol` legacy collections (replaced by Python built-ins), distributed RMI-style simulation, and SimView GUI hooks. See [Java mapping](docs/java-mapping.md) for the full breakdown.
+DEVSpy implements the headless classic-DEVS simulation core: atomic and coupled models, a time-based coordinator, and a facade for iteration- or time-limited runs. Distributed simulation and GUI tooling are out of scope.

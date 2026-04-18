@@ -2,8 +2,7 @@
 
 DEVS (Discrete Event System Specification) describes a system as a set of
 **atomic** state machines connected by **couplings** inside **coupled**
-models. DEVSpy follows the *classic* DEVS formalism (the one DEVSJAVA
-implements).
+models. DEVSpy implements the *classic* DEVS formalism.
 
 ## Atomic models
 
@@ -89,4 +88,3 @@ For each event time `t` the simulator does:
 ## Further reading
 
 - B. Zeigler, H. Praehofer, T. G. Kim — *Theory of Modeling and Simulation* (the canonical reference).
-- DEVSJAVA documentation in the [original Java repo](https://github.com/ezequielbeccaria/Devs-Suite-Facade).

@@ -31,7 +31,7 @@ Accepts an `Atomic`, a `Digraph`, a preconfigured `TimeCoordinator`, or `None`
 | Method                                   | Effect                                                          |
 |------------------------------------------|-----------------------------------------------------------------|
 | `set_atomic_model(model)`                | Wraps the atomic model in a `TimeAtomicSimulator` and initializes to t=0. |
-| `set_digraph_model(model, initialize=True)` | Wraps the digraph in a `TimeCoordinator`. (When called via the constructor, `initialize=False` is used to match Java's behavior — call `reset()` explicitly.) |
+| `set_digraph_model(model, initialize=True)` | Wraps the digraph in a `TimeCoordinator`. When invoked through the constructor, `initialize=False` — call `reset()` explicitly before simulating. |
 | `reset()`                                | Re-initializes the simulator to t=0.                            |
 | `simulate_iterations(n)`                 | Runs the iteration-count simulator (`Coordinator.simulate(n)`). |
 | `simulate_to_time(t)`                    | Runs until simulated time reaches `t`.                          |
@@ -119,8 +119,8 @@ for c in m: ...                  # iterate Contents
 
 ## Entities — `Entity`, `IntEnt`, `DoubleEnt`, `Pair`
 
-Lightweight value wrappers, ported from DEVSJAVA's `GenCol`. Use them for
-parity; in Python any object works as a `Content` value.
+Lightweight value wrappers. Any Python object can be used as a `Content`
+value — these exist only for cases where a typed wrapper is convenient.
 
 ```python
 IntEnt(value)         # name auto-generated from int(value)
@@ -138,17 +138,16 @@ You normally don't construct these directly — `DevsSuiteFacade` does it.
 |------------------------|------------------------------------|----------------------------------------------------|
 | `AtomicSimulator`      | `Atomic`                           | `simulate(num_iter)` — iteration-limited           |
 | `Coordinator`          | `Digraph`                          | `simulate(num_iter)` — iteration-limited           |
-| `TimeAtomicSimulator`  | `Atomic`                           | `simulate(time)` (parity quirk; see note), `simulate_until_time(t)`, `simulate_from_to(t0, t1)` |
+| `TimeAtomicSimulator`  | `Atomic`                           | `simulate(time)` (iteration-gated; see note), `simulate_until_time(t)`, `simulate_from_to(t0, t1)` |
 | `TimeCoordinator`      | `Digraph`                          | `simulate(max_sim_time)`, `simulate_from_to(t0, t1)`, `stop_simulation()` |
 | `CoupledSimulator`     | `Atomic` (inside a `Coordinator`)  | internal — handles message routing per atomic      |
 
-### Quirk preserved from Java
+### `TimeAtomicSimulator.simulate(time)` is iteration-gated
 
-`TimeAtomicSimulator.simulate(time)` in DEVSJAVA gates on the iteration count
-(`while i <= time`) rather than simulated time. DEVSpy preserves that exact
-semantic for parity. If you want a real time gate, use
-`simulate_until_time(t)`. `TimeCoordinator.simulate(t)` correctly gates on
-`t_n <= t`.
+For backwards-compatibility, `TimeAtomicSimulator.simulate(time)` loops
+`while i <= time` where `i` is the iteration counter — not the simulated
+time. Use `simulate_until_time(t)` for a real time gate.
+`TimeCoordinator.simulate(t)` does gate on simulated time (`t_n <= t`).
 
 ---
 
