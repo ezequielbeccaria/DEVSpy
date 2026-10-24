@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from devspy.simulation.atomic_simulator import AtomicSimulator
-from devspy.util.logging import FULL, log
+from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
 
@@ -23,7 +23,8 @@ class TimeAtomicSimulator(AtomicSimulator):
         i = 1
         self.t_n = self.next_tn()
         while self.t_n < INFINITY and i <= time:
-            log(f"ITERATION {i} ,time: {self.t_n}", FULL)
+            if is_enabled(FULL):
+                log(f"ITERATION {i} ,time: {self.t_n}", FULL)
             self.compute_input_output(self.t_n)
             self.show_output()
             self.delt_func(self.t_n)

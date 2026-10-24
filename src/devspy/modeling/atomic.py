@@ -4,7 +4,7 @@ import math
 
 from devspy.modeling.devs import IOBasicDevs
 from devspy.modeling.message import Message
-from devspy.util.logging import log, FULL
+from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
 
@@ -77,6 +77,8 @@ class Atomic(IOBasicDevs):
         return f"phase :{self.phase} sigma : {self.sigma}"
 
     def show_state(self) -> None:
+        if not is_enabled(FULL):
+            return
         log(f"Model {self.get_name()}'s state: ", FULL)
         log(f"phase :{self.phase} sigma : {self.sigma}", FULL)
 
