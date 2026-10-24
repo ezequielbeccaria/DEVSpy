@@ -84,7 +84,7 @@ class Coordinator(AtomicSimulator):
                 self.ext_coup_info.add(src_pair, dst_pair)
             else:
                 sim = self.model_to_sim.get(src)
-                if hasattr(sim, "add_pair"):
+                if sim is not None and hasattr(sim, "add_pair"):
                     sim.add_pair(src_pair, dst_pair)  # type: ignore[attr-defined]
 
     # --- parent wiring (for nested coordinators) --------------------------
@@ -176,7 +176,7 @@ class Coordinator(AtomicSimulator):
                     target.put_messages(new_content)  # type: ignore[attr-defined]
 
     # --- run loops ---------------------------------------------------------
-    def simulate(self, num_iter: int) -> None:
+    def simulate(self, num_iter: float) -> None:
         i = 1
         self.t_n = self.next_tn()
         while self.t_n < INFINITY and i <= num_iter:

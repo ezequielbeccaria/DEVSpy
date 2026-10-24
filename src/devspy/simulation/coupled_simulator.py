@@ -88,7 +88,7 @@ class CoupledSimulator(AtomicSimulator):
         self.wrap_deltfunc(t, self.input)
         self.input = Message()
 
-    def simulate(self, num_iter: int) -> None:
+    def simulate(self, num_iter: float) -> None:
         i = 1
         self.t_n = self.next_tn()
         from devspy.modeling.atomic import INFINITY

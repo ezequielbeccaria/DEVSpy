@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any, Optional
 
 from devspy.modeling.content import Content
-from devspy.modeling.devs import IOBasicDevs
 from devspy.modeling.message import Message
 from devspy.modeling.port import Port
 from devspy.util.logging import FULL, is_enabled, log
@@ -18,8 +17,10 @@ class AtomicSimulator:
     Drives a single atomic model through the DEVS state-transition protocol.
     """
 
-    def __init__(self, model: Optional[IOBasicDevs] = None) -> None:
-        self.my_model: Optional[IOBasicDevs] = model
+    def __init__(self, model: Any = None) -> None:
+        # Any, not IOBasicDevs: Coordinator passes its Digraph here, and compiled
+        # builds (mypyc) enforce annotations at run time.
+        self.my_model: Any = model
         self.t_l: float = 0.0
         self.t_n: float = 0.0
         self.input: Message = Message()
@@ -46,7 +47,7 @@ class AtomicSimulator:
     def get_input(self) -> Message:
         return self.input
 
-    def get_model(self) -> Optional[IOBasicDevs]:
+    def get_model(self) -> Any:
         return self.my_model
 
     # --- lifecycle ---------------------------------------------------------
@@ -102,7 +103,7 @@ class AtomicSimulator:
         self.output.print()
 
     # --- simulation loops --------------------------------------------------
-    def simulate(self, num_iter: int) -> None:
+    def simulate(self, num_iter: float) -> None:
         i = 1
         self.t_n = self.next_tn()
         while self.t_n < INFINITY and i <= num_iter:
@@ -142,7 +143,7 @@ class AtomicSimulator:
         pass
 
 
-def _has_custom_show_state(model: Optional[IOBasicDevs]) -> bool:
+def _has_custom_show_state(model: Any) -> bool:
     from devspy.modeling.atomic import Atomic
 
     if model is None:
