@@ -3,7 +3,12 @@ models, and print one digest per model. Run it against two versions of the
 engine (e.g. via PYTHONPATH) and diff the output to prove they are
 observationally identical.
 
-usage: python trace_diff.py [N_RANDOM]
+usage: python trace_diff.py [N_RANDOM] [--model-level]
+
+--model-level instruments the user's Atomic subclasses instead of the simulator
+classes. Use it for engine builds whose simulators cannot be monkeypatched
+(e.g. compiled with mypyc); it records the same λ/δ events, with the time taken
+from the model's simulator.
 """
 from __future__ import annotations
 
@@ -52,8 +57,46 @@ def _cio(self, t):
         TRACE.append(f"{t:.9g} {self.my_model.get_name()} out y={_bag(self.output)}")
 
 
-AtomicSimulator.wrap_deltfunc = _wrap
-AtomicSimulator.compute_input_output = _cio
+def _instrument_models():
+    def all_subclasses(cls):
+        for sub in cls.__subclasses__():
+            yield sub
+            yield from all_subclasses(sub)
+
+    def t_of(model):
+        sim = model.get_simulator()
+        return sim.t_n if sim is not None else float("nan")
+
+    for cls in set(all_subclasses(Atomic)):
+        def wrap(cls=cls):
+            d_int, d_ext, d_con, out = cls.deltint, cls.deltext, cls.deltcon, cls.out
+
+            def deltint(self):
+                TRACE.append(f"{t_of(self):.9g} {self.get_name()} int")
+                return d_int(self)
+
+            def deltext(self, e, x):
+                TRACE.append(f"{self.get_name()} ext e={e:.9g} x={_bag(x)}")
+                return d_ext(self, e, x)
+
+            def deltcon(self, e, x):
+                TRACE.append(f"{t_of(self):.9g} {self.get_name()} con e={e:.9g} x={_bag(x)}")
+                # nested deltint/deltext calls are traced too; keep them, they are part of the behaviour
+                return d_con(self, e, x)
+
+            def out_(self):
+                y = out(self)
+                if not y.is_empty():
+                    TRACE.append(f"{t_of(self):.9g} {self.get_name()} out y={_bag(y)}")
+                return y
+
+            cls.deltint, cls.deltext, cls.deltcon, cls.out = deltint, deltext, deltcon, out_
+        wrap()
+
+
+if "--model-level" not in sys.argv:
+    AtomicSimulator.wrap_deltfunc = _wrap
+    AtomicSimulator.compute_input_output = _cio
 
 
 # --- random hierarchical models with ties, zero-time advances and confluence
@@ -144,17 +187,21 @@ def run_digraph(model, end):
 
 
 def main():
-    n_random = int(sys.argv[1]) if len(sys.argv) > 1 else 200
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    n_random = int(args[0]) if args else 200
     cases = []
 
     import gpt_model
     import manufacturing_line
     import mm1_queue
+    import devstone_model as ds
+
+    if "--model-level" in sys.argv:
+        _instrument_models()
 
     cases.append(("gpt", lambda: gpt_model.run(end_time=30.0)))
     cases.append(("mm1", lambda: mm1_queue.run(seed=1, end_time=500.0)))
     cases.append(("manufacturing", lambda: manufacturing_line.run()))
-    import devstone_model as ds
 
     for w, d in [(5, 3), (3, 6), (8, 1)]:
         cases.append((f"devstone{w}x{d}", lambda w=w, d=d: run_digraph(ds.build(w, d, 30), 1e9)))

@@ -24,7 +24,19 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIGS = [(5, 3, 1000), (10, 10, 1000), (200, 1, 1000), (3, 50, 500), (20, 20, 500)]
 JAVA = os.environ.get("JAVA", "/usr/lib/jvm/jdk-17/bin/java")
 JAVA_OPTS = os.environ.get("JAVA_OPTS", "").split()
+# Other Python engines run in their own interpreter/venv (see other_python/).
+OTHERS_PY = os.environ.get("OTHERS_PY", sys.executable)
+PYPDEVS_PATH = os.environ.get("PYPDEVS_PATH", "")
+OTHER_ENGINES = ("xdevs", "xdevs-flat", "pypdevs-minimal")
+CPP_BIN = os.environ.get("CPP_BIN", os.path.join(HERE, "cpp", "bin"))
+CPP_ENGINES = ("adevs", "cadmium")
 JAVA_LABEL = "devsjava" + (f"[{' '.join(JAVA_OPTS)}]" if JAVA_OPTS else "")
+
+
+def devspy_label(src):
+    """devspy@<sha>[+dirty] for git checkouts, devspy[<dir name>] otherwise."""
+    sha = _git_sha(src or os.path.join(HERE, ".."))
+    return f"devspy@{sha}" if sha else f"devspy[{os.path.basename(os.path.normpath(src))}]"
 
 
 def _git_sha(path):
@@ -44,6 +56,11 @@ def run_one(engine, src, cfg, reps):
     if engine == "devsjava":
         cp = open(os.path.join(HERE, "java", "classpath.txt")).read().strip()
         cmd = [JAVA, *JAVA_OPTS, "-cp", cp, "DevStone", *args]
+    elif engine in CPP_ENGINES:
+        cmd = [os.path.join(CPP_BIN, f"{engine}_bench"), "devstone", *args]
+    elif engine in OTHER_ENGINES:
+        cmd = [OTHERS_PY, os.path.join(HERE, "other_python", "bench.py"), engine, "devstone", *args]
+        env["PYTHONPATH"] = PYPDEVS_PATH
     else:
         cmd = [sys.executable, os.path.join(HERE, "devstone.py"), *args]
         if src:
@@ -67,8 +84,8 @@ def main():
     with open(path, "a") as fh:
         for spec in a.engines:
             engine, _, src = spec.partition("=")
-            sha = _git_sha(src or os.path.join(HERE, ".."))
-            label = JAVA_LABEL if engine == "devsjava" else f"{engine}@{sha}"
+            label = (JAVA_LABEL if engine == "devsjava"
+                     else engine if engine in OTHER_ENGINES + CPP_ENGINES else devspy_label(src))
             for cfg in CONFIGS:
                 r = run_one(engine, src, cfg, a.reps)
                 r.update(meta, label=label)

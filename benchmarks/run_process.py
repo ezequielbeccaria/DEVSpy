@@ -15,18 +15,20 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from run_devstone import HERE, JAVA, JAVA_LABEL, JAVA_OPTS, _git_sha  # noqa: E402
+from run_devstone import (CPP_BIN, CPP_ENGINES, HERE, JAVA, JAVA_LABEL, JAVA_OPTS,  # noqa: E402
+                          OTHER_ENGINES, OTHERS_PY, PYPDEVS_PATH, devspy_label)
 
 CONFIGS = [(5, 3, 100), (10, 10, 1000)]
 
 
 def measure(cmd, env):
+    # /usr/bin/time reports the exec'd program's own peak RSS (see run_rl.run_procs)
     t0 = time.perf_counter()
-    p = subprocess.Popen(cmd, env=env, stdout=subprocess.DEVNULL)
-    _, status, ru = os.wait4(p.pid, 0)
+    p = subprocess.run(["/usr/bin/time", "-f", "RSSKB=%M", *cmd], env=env,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     wall = time.perf_counter() - t0
-    assert status == 0, cmd
-    return wall * 1e3, ru.ru_maxrss  # KiB on Linux
+    assert p.returncode == 0, p.stderr
+    return wall * 1e3, int(p.stderr.strip().splitlines()[-1].split("=")[1])  # KiB
 
 
 def main():
@@ -43,11 +45,17 @@ def main():
             if engine == "devsjava":
                 cp = open(os.path.join(HERE, "java", "classpath.txt")).read().strip()
                 cmd, label = [JAVA, *JAVA_OPTS, "-cp", cp, "DevStone", *args], JAVA_LABEL
+            elif engine in CPP_ENGINES:
+                cmd, label = [os.path.join(CPP_BIN, f"{engine}_bench"), "devstone", *args], engine
+            elif engine in OTHER_ENGINES:
+                cmd = [OTHERS_PY, os.path.join(HERE, "other_python", "bench.py"), engine,
+                       "devstone", *args]
+                env["PYTHONPATH"], label = PYPDEVS_PATH, engine
             else:
                 cmd = [sys.executable, os.path.join(HERE, "devstone.py"), *args]
                 if src:
                     env["PYTHONPATH"] = os.path.join(src, "src")
-                label = f"devspy@{_git_sha(src or os.path.join(HERE, '..'))}"
+                label = devspy_label(src)
             runs = [measure(cmd, env) for _ in range(a.reps)]
             row = {"label": label, "w": w, "d": d, "n": n,
                    "wall_ms": [r[0] for r in runs], "maxrss_kib": [r[1] for r in runs],
