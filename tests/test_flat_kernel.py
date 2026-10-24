@@ -1,6 +1,6 @@
 """Behaviour of the flattened coordinator across hierarchy levels."""
 
-from devspy import Atomic, Content, DevsSuiteFacade, Digraph, IntEnt, Message
+from devspy import Atomic, DevsSuiteFacade, Digraph
 
 
 class Pulse(Atomic):
@@ -23,9 +23,7 @@ class Pulse(Atomic):
             self.hold_in("active", self.period)
 
     def out(self):
-        m = Message()
-        m.add(Content("out", IntEnt(self.k)))
-        return m
+        return {"out": [self.k]}
 
 
 class Recorder(Atomic):
@@ -40,7 +38,7 @@ class Recorder(Atomic):
 
     def deltext(self, e, x):
         sim = self.get_simulator()
-        self.seen.extend((sim.t_l + e, int(c.get_value())) for c in x)
+        self.seen.extend((sim.t_l + e, v) for v in x.get("in", ()))
 
 
 def _wrap(name, inner, in_port=True, out_port=True):
@@ -75,7 +73,7 @@ def test_sim_inject_reaches_nested_atomic():
     top = _wrap("top", _wrap("mid", rec, out_port=False), out_port=False)
     f = DevsSuiteFacade(top)
     f.reset()
-    f.get_simulator().sim_inject(2.5, "in", IntEnt(7))
+    f.get_simulator().sim_inject(2.5, "in", 7)
     assert rec.seen == [(2.5, 7)]
 
 

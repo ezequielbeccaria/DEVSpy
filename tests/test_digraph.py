@@ -1,4 +1,4 @@
-from devspy import Atomic, Content, Digraph, IntEnt, Message, Pair
+from devspy import Atomic, Bag, Digraph
 from devspy.modeling.digraph import Couprel
 
 
@@ -13,10 +13,8 @@ class Source(Atomic):
     def deltint(self) -> None:
         self.passivate()
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("out", IntEnt(7)))
-        return m
+    def out(self) -> Bag:
+        return {"out": [7]}
 
 
 class Sink(Atomic):
@@ -29,16 +27,14 @@ class Sink(Atomic):
         self.seen = []
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
-        for c in x:
-            if c.get_port_name() == "in":
-                self.seen.append(int(c.get_value()))
+    def deltext(self, e: float, x: Bag) -> None:
+        self.seen.extend(x.get("in", ()))
 
 
 def test_couprel_add_translate_remove():
     cr = Couprel()
-    src = Pair("a", "out")
-    dst = Pair("b", "in")
+    src = ("a", "out")
+    dst = ("b", "in")
     cr.add(src, dst)
     assert dst in cr.translate("a", "out")
     cr.remove(src, dst)
@@ -58,7 +54,7 @@ def test_digraph_composition_and_coupling():
     assert s.get_parent() is g
 
     couprel_pairs = list(g.get_couprel().iter_pairs())
-    assert (Pair("src", "out"), Pair("sink", "in")) in couprel_pairs
+    assert (("src", "out"), ("sink", "in")) in couprel_pairs
 
 
 def test_digraph_check_name_uniqueness():

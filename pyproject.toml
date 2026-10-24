@@ -4,7 +4,7 @@ build-backend = "poetry.core.masonry.api"
 
 [tool.poetry]
 name = "devspy"
-version = "0.1.0"
+version = "0.2.0"
 description = "Python port of Devs-Suite-Facade — headless DEVS simulation with time-limit support"
 readme = "README.md"
 license = "Apache-2.0"

@@ -1,4 +1,4 @@
-from devspy import Atomic, Content, Digraph, IntEnt, Message, TimeAtomicSimulator, TimeCoordinator
+from devspy import Atomic, Bag, Digraph, TimeAtomicSimulator, TimeCoordinator
 
 
 class Ticker(Atomic):
@@ -15,10 +15,8 @@ class Ticker(Atomic):
         self.ticks += 1
         self.hold_in("active", 1.0)
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("tick", IntEnt(self.ticks + 1)))
-        return m
+    def out(self) -> Bag:
+        return {"tick": [self.ticks + 1]}
 
 
 class Sink(Atomic):
@@ -31,10 +29,8 @@ class Sink(Atomic):
         self.seen = []
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
-        for c in x:
-            if c.get_port_name() == "in":
-                self.seen.append(int(c.get_value()))
+    def deltext(self, e: float, x: Bag) -> None:
+        self.seen.extend(x.get("in", ()))
 
 
 def test_time_atomic_simulator_until_time_stops_at_bound():
