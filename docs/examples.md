@@ -62,9 +62,9 @@ utilization ≈ ρ and mean wait ≈ `1/(μ - λ)`.
 
 Three-station serial assembly line. **Each station is itself a `Digraph`**
 containing a `Buffer` and a `Machine`, so the top-level `Line` is a
-*digraph of digraphs* — a Coordinator inside a Coordinator. This is the
-example to run when you want to exercise nested-coupling routing in the
-engine.
+*digraph of digraphs*. The coordinator flattens it into direct routes between
+atomics. This is the example to run when you want to exercise nested-coupling
+routing in the engine.
 
 Topology:
 
