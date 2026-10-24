@@ -2,7 +2,10 @@
 
 DEVS (Discrete Event System Specification) describes a system as a set of
 **atomic** state machines connected by **couplings** inside **coupled**
-models. DEVSpy implements the *classic* DEVS formalism.
+models. DEVSpy implements the *Parallel DEVS* (PDEVS) formalism: simultaneous
+events are handled with a confluent transition (`deltcon`), all imminent
+components emit in the same step (no `select` tie-breaking), and inputs
+arrive as bags (`Message`).
 
 ## Atomic models
 
@@ -31,8 +34,10 @@ self.phase_is(phase)         # bool
 
 ### Default `deltcon`
 
-If you don't override it, `deltcon = deltint() then deltext(e, x)`. When your
-atomic tracks its own time (e.g., a clock variable), this default may
+If you don't override it, `deltcon = deltint() then deltext(e, x)`. Note that
+`e` is the elapsed time *before* `deltint` (i.e. `ta`), whereas Zeigler's
+PDEVS default uses `e = 0` after the internal transition. When your
+atomic tracks its own time (e.g., a clock variable or `cont(e)`), this default may
 double-advance — the GPT example's `Transducer` shows how to override
 explicitly.
 

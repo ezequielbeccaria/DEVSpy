@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 from devspy.modeling.atomic import Atomic
 from devspy.modeling.devs import DevsBase, IOBasicDevs

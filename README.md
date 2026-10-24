@@ -58,4 +58,4 @@ poetry run python examples/manufacturing_line.py   # 3-station hierarchical line
 
 ## Scope
 
-DEVSpy implements the headless classic-DEVS simulation core: atomic and coupled models, a time-based coordinator, and a facade for iteration- or time-limited runs. Distributed simulation and GUI tooling are out of scope.
+DEVSpy implements the headless Parallel DEVS (PDEVS) simulation core: atomic and coupled models, a time-based coordinator, and a facade for iteration- or time-limited runs. Distributed simulation and GUI tooling are out of scope.
