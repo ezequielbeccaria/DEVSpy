@@ -18,6 +18,8 @@ M = [
   ("one value per port", C, "                            lst.extend(values)", "                            pass"),
   ("imminents skip ta()", C, "tn = time + (model.sigma if sim.ta_is_sigma else model.ta())", "tn = time + (model.sigma if sim.ta_is_sigma else model.ta()) + (0.5 if sim.index == 1 else 0)"),
   ("injection skips λ", C, "            self.compute_input_output(time)\n        self._send_down_messages()", "            self._imminent = self._pop(time)\n        self._send_down_messages()"),
+  ("skip reschedule of imminents too", C, "if tn == old_tn != time:", "if tn == old_tn:"),
+  ("heap rebuilt with stale versions", C, "heap = [(s.t_n, s.index, s.version) for s in self.simulators if s.t_n < INFINITY]", "heap = [(s.t_n, s.index, s.version - 1) for s in self.simulators if s.t_n < INFINITY]"),
   ("root output dropped", C, "inp = root_out if dsim is None else dsim.input", "inp = {} if dsim is None else dsim.input"),
 ]
 for name, path, old, new in M:
