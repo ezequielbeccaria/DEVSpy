@@ -23,8 +23,18 @@ and fails loudly on invalid models.
 - `sim_inject` raises `ValueError` when `e` is outside `[0, t_n - t_l]` or a port
   is not a declared input port. It used to drop the input silently.
 
+### Fixed
+
+- `sim_inject` at exactly `t_n` (and any `wrap_deltfunc` without a preceding
+  `compute_input_output`) now runs λ for the imminent models and routes their
+  outputs before δ. It used to apply δ without λ, so those outputs were lost.
+  The root outputs of an injected round are shown, as in a normal round.
+
 ### Added
 
+- `tests/reference_pdevs.py`: a literal PDEVS abstract simulator used as an
+  oracle (450 random-model comparisons in the test suite), and
+  `benchmarks/mutation_check.py`, which shows the oracle catches known kernel bugs.
 - `ZeroTimeLoopError`: raised after more than `max_rounds_per_instant`
   (default 100 000, `None` disables it) consecutive rounds at one time.
 - Every `simulate*` loop initializes the simulator if `initialize()` was never

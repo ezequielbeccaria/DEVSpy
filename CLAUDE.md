@@ -21,7 +21,7 @@ poetry build
 
 When adding a dependency, commit `pyproject.toml` and `poetry.lock` together.
 
-Any change to `simulation/` must keep DEVS semantics. Prove it with the trace diff in `benchmarks/README.md`: the λ/δ traces of the old and new engine must be byte-identical. Performance work is measured with the `benchmarks/run_*.py` runners, which append to `benchmarks/results/*.jsonl`. Log conclusions in `benchmarks/FINDINGS.md`.
+Any change to `simulation/` must keep DEVS semantics. `tests/test_reference_pdevs.py` checks the kernel against `tests/reference_pdevs.py`, a literal hierarchical PDEVS abstract simulator (Chow & Zeigler), on hundreds of random models, with and without external injections. Never change the oracle to make the kernel pass. Also run the trace diff in `benchmarks/README.md`: the λ/δ traces of the old and new engine must be byte-identical. Performance work is measured with the `benchmarks/run_*.py` runners, which append to `benchmarks/results/*.jsonl`. Log conclusions in `benchmarks/FINDINGS.md`.
 
 ## Architecture
 

@@ -131,7 +131,11 @@ class AtomicSimulator:
         assert self.my_model is not None
         bag = port_or_bag if isinstance(port_or_bag, dict) else {str(port_or_bag): [value]}
         _check_injection(self, e, bag, self.my_model._inports)
-        self.wrap_deltfunc(self.t_l + e, bag)
+        t = self.t_l + e
+        if t == self.t_n:  # confluent: λ before δcon
+            self.compute_input_output(t)
+            self.show_output()
+        self.wrap_deltfunc(t, bag)
 
 
 class _InstantGuard:
