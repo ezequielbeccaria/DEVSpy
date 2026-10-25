@@ -35,12 +35,22 @@ class Coordinator(AtomicSimulator):
     that spends more than `max_rounds_per_instant` rounds at a single time
     raises `ZeroTimeLoopError` instead of hanging (`None` disables the check).
 
+    Scheduling: tN = min tN_d and IMM(t) = {d | tN_d = t} come either from a heap
+    of `(t_n, index, version)` or from a linear scan of the simulators. The scan
+    costs about 0.05 µs per simulator and round, the heap about 0.27 µs per
+    reschedule, so with `scheduler = "auto"` the coordinator measures the
+    reschedules per round and uses the scan while n < ~5 per round (dense
+    models and small networks), the heap otherwise. "heap" and "scan" force one.
+
     Variable structure: when a digraph of the hierarchy changes (components or
     couplings added or removed, e.g. from a model's transition), the network is
     re-flattened after the current round, as in DSDEVS. Every transition at t
     sees the old structure, existing simulators keep their state, new atomics
     are initialized at t, and removed ones leave the schedule.
     """
+
+    scheduler: str = "auto"
+    _AUTO_PERIOD = 64  # rounds between scheduler choices
 
     def __init__(self, coupled: Digraph, set_simulators: bool = True) -> None:
         super().__init__(coupled)
@@ -53,6 +63,10 @@ class Coordinator(AtomicSimulator):
         self._heap: list[tuple[float, int, int]] = []
         # Rebuild the heap when stale entries make it this long (set in _flatten).
         self._heap_limit = 64
+        # Linear-scan scheduling instead of the heap (see `scheduler`).
+        self._scan = self.scheduler == "scan"
+        self._rounds_seen = 0
+        self._reschedules = 0
         self._imminent: list[CoupledSimulator] = []
         self._receivers: list[CoupledSimulator] = []
         self._imminent_time: float = -INFINITY
@@ -203,6 +217,8 @@ class Coordinator(AtomicSimulator):
 
     # --- time --------------------------------------------------------------
     def next_tn(self) -> float:
+        if self._scan:
+            return min(map(_get_tn, self.simulators), default=INFINITY)
         heap, sims = self._heap, self.simulators
         while heap:
             tn, idx, version = heap[0]
@@ -227,7 +243,7 @@ class Coordinator(AtomicSimulator):
             if show:
                 model.show_state()
         heap.sort()
-        self._heap = heap
+        self._heap = [] if self._scan else heap
         self._imminent = []
         self._receivers = []
         self._imminent_time = -INFINITY
@@ -242,7 +258,9 @@ class Coordinator(AtomicSimulator):
 
     # --- transition --------------------------------------------------------
     def _pop(self, time: float) -> list[CoupledSimulator]:
-        """Pop IMM(time) from the heap, in simulator index order."""
+        """IMM(time), in simulator index order (popped from the heap, or scanned)."""
+        if self._scan:
+            return [s for s in self.simulators if s.t_n == time]
         heap, sims = self._heap, self.simulators
         imminent: list[CoupledSimulator] = []
         while heap and heap[0][0] <= time:
@@ -296,6 +314,7 @@ class Coordinator(AtomicSimulator):
         push = heappush
         inf = INFINITY
         observers = self.observers
+        use_heap = not self._scan
         for sim in affected:
             model = sim.my_model
             x_bag = sim.input
@@ -321,13 +340,40 @@ class Coordinator(AtomicSimulator):
             sim.t_n = tn
             version = sim.version + 1
             sim.version = version
-            if tn < inf:
+            if use_heap and tn < inf:
                 push(heap, (tn, sim.index, version))
         if len(heap) > self._heap_limit:
             self._rebuild_heap()
+        self._reschedules += len(affected)
+        self._rounds_seen += 1
+        if self._rounds_seen >= self._AUTO_PERIOD and self.scheduler == "auto":
+            self._choose_scheduler()
+
+    def _sync_scheduler(self) -> None:
+        """Honour a `scheduler` forced on the instance after construction."""
+        if self.scheduler != "auto" and (self.scheduler == "scan") != self._scan:
+            self._set_scan(self.scheduler == "scan")
+
+    def _choose_scheduler(self) -> None:
+        """Pick scan or heap from the reschedules per round since the last choice
+        (with hysteresis, so a borderline model does not flip every period)."""
+        per_round = self._reschedules / self._rounds_seen
+        self._rounds_seen = self._reschedules = 0
+        n = len(self.simulators)
+        if not self._scan and n < 4.5 * per_round + 8:
+            self._set_scan(True)
+        elif self._scan and n > 6.5 * per_round + 16:
+            self._set_scan(False)
+
+    def _set_scan(self, scan: bool) -> None:
+        self._scan = scan
+        self._rebuild_heap()  # from the simulators' t_n (empty in scan mode)
 
     def _rebuild_heap(self) -> None:
         """Drop the stale entries left behind by rescheduled receivers."""
+        if self._scan:
+            self._heap = []
+            return
         heap = [(s.t_n, s.index, s.version) for s in self.simulators if s.t_n < INFINITY]
         heapify(heap)
         self._heap = heap
@@ -398,7 +444,9 @@ class Coordinator(AtomicSimulator):
         """Run rounds while `t_n <= max_time`, for at most `num_iter` rounds or until
         `stop_simulation()`. Initializes first if `initialize()` was never called."""
         if not self.initialized:
+            self._sync_scheduler()
             self.initialize(0)
+        self._sync_scheduler()
         self._stop_sim_flag = False
         self._running = True
         try:
@@ -442,13 +490,12 @@ class Coordinator(AtomicSimulator):
 
     # --- snapshots ---------------------------------------------------------
     def snapshot(self) -> dict:
-        """Copy of the simulation state (every atomic's attributes, the times and
-        the event heap), for `restore`. Model objects are not copied, and
+        """Copy of the simulation state (every atomic's attributes and times; the
+        schedule is rebuilt from them), for `restore`. Model objects are not copied, and
         references between models are kept as references."""
         state = {
             "models": [model_state(s.my_model) for s in self.simulators],
             "sims": [(s.t_l, s.t_n, s.version, s.input) for s in self.simulators],
-            "heap": list(self._heap),
             "times": (self.t_l, self.t_n),
             "structure": [id(s.my_model) for s in self.simulators],
         }
@@ -465,7 +512,7 @@ class Coordinator(AtomicSimulator):
         ):
             set_model_state(sim.my_model, ms)
             sim.t_l, sim.t_n, sim.version, sim.input = t_l, t_n, version, inp
-        self._heap = state["heap"]
+        self._rebuild_heap()
         self.t_l, self.t_n = state["times"]
         self._imminent = []
         self._receivers = []
@@ -539,6 +586,7 @@ def _group(routes: list[Route]) -> list[Fanout]:
 
 
 _by_index = attrgetter("index")
+_get_tn = attrgetter("t_n")
 
 
 def _check_components(g: Digraph) -> dict[str, DevsBase]:
