@@ -1,29 +1,32 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Optional
-
-from devspy.modeling.content import Content
-from devspy.modeling.entity import Entity
-from devspy.modeling.message import Message
-from devspy.modeling.port import Port
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 if TYPE_CHECKING:
     from devspy.simulation.coupled_simulator import CoupledSimulator
 
+#: A DEVS message bag: input or output port name -> values received/emitted on
+#: it at one instant. Models read inputs with ``x.get("in", ())`` and return
+#: outputs as ``{"out": [value]}`` (or ``{}`` for no output). Values are plain
+#: Python objects.
+Bag = Dict[str, List[Any]]
 
-class DevsBase(Entity):
-    """Root of the DEVS model hierarchy.
 
-    Ports Java's `devs` + `IODevs` into one base class; concrete subclasses
-    are `Atomic` and `Digraph`.
+class DevsBase(ABC):
+    """Root of the DEVS model hierarchy: a named model with input/output ports.
+
+    Concrete subclasses are `Atomic` and `Digraph`.
     """
 
     def __init__(self, name: str) -> None:
-        super().__init__(name)
+        self.name = name
         self._parent: Optional["DevsBase"] = None
         self._inports: list[str] = []
         self._outports: list[str] = []
+
+    def get_name(self) -> str:
+        return self.name
 
     def add_inport(self, port_name: str) -> None:
         if port_name not in self._inports:
@@ -47,20 +50,17 @@ class DevsBase(Entity):
     def get_outports(self) -> list[str]:
         return list(self._outports)
 
-    def make_content(self, port: Port | str, value) -> Content:
-        return Content(port, value)
-
-    def message_on_port(self, x: Message, port: Port | str, c: Content) -> bool:
-        return c.on_port(port)
-
     def set_parent(self, parent: "DevsBase") -> None:
         self._parent = parent
 
     def get_parent(self) -> Optional["DevsBase"]:
         return self._parent
 
+    def __repr__(self) -> str:
+        return self.name
 
-class IOBasicDevs(DevsBase, ABC):
+
+class IOBasicDevs(DevsBase):
     """Abstract base for models that implement the DEVS state-transition contract."""
 
     @abstractmethod
@@ -70,16 +70,16 @@ class IOBasicDevs(DevsBase, ABC):
     def deltint(self) -> None: ...
 
     @abstractmethod
-    def deltext(self, e: float, x: Message) -> None: ...
+    def deltext(self, e: float, x: Bag) -> None: ...
 
     @abstractmethod
-    def deltcon(self, e: float, x: Message) -> None: ...
+    def deltcon(self, e: float, x: Bag) -> None: ...
 
     @abstractmethod
     def ta(self) -> float: ...
 
     @abstractmethod
-    def out(self) -> Message: ...
+    def out(self) -> Bag: ...
 
     @abstractmethod
     def show_state(self) -> None: ...
@@ -89,6 +89,3 @@ class IOBasicDevs(DevsBase, ABC):
 
     def get_simulator(self) -> Optional["CoupledSimulator"]:
         return getattr(self, "_simulator", None)
-
-    def get_activity(self):
-        return None

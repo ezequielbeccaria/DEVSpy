@@ -4,9 +4,7 @@ Public symbols are re-exported from the top-level `devspy` package.
 
 ```python
 from devspy import (
-    Atomic, Digraph, Coupled, Couprel,
-    Port, Content, Message,
-    Entity, IntEnt, DoubleEnt, Pair,
+    Atomic, Digraph, Coupled, Couprel, Bag,
     DevsBase, IOBasicDevs,
     DevsSuiteFacade, NoModelSetError,
     AtomicSimulator, CoupledSimulator, Coordinator,
@@ -63,7 +61,7 @@ Override these:
 | `deltint()`             | When `t == t_n` and no input is pending.                 |
 | `deltext(e, x)`         | When input arrives and `t != t_n`.                       |
 | `deltcon(e, x)`         | When input arrives at `t == t_n`. Default = `deltint()` then `deltext(e, x)`. |
-| `out() -> Message`      | Just before `deltint`/`deltcon`. Return what to emit.    |
+| `out() -> Bag`          | Just before `deltint`/`deltcon`. Return what to emit.    |
 
 State helpers (already implemented):
 
@@ -101,32 +99,31 @@ g.get_components() / g.get_couprel()
 
 ---
 
-## `Port`, `Content`, `Message`
+## Messages: `Bag`
+
+A message bag is a plain dict, `Bag = dict[str, list]`, that maps a port name to
+the values on that port at one instant. Values are ordinary Python objects;
+there are no wrapper classes.
 
 ```python
-Port(name)                       # an in/out port reference
-Content(port, value)             # one tagged value
-Message()                        # multiset of Content (a "bag")
-m.add(content)
-m.is_empty()
-m.values_on_port(port_name) -> list
-for c in m: ...                  # iterate Contents
+def deltext(self, e, x):            # x: Bag of the inputs received
+    for job in x.get("in", ()):     # values that arrived on port "in"
+        ...
+    if "stop" in x:                 # did anything arrive on "stop"?
+        ...
+
+def out(self):                      # return a Bag; {} means no output
+    return {"out": [self.job], "next": [1]}
 ```
 
-`port` may be a `Port` instance or a string (auto-promoted).
-
----
-
-## Entities — `Entity`, `IntEnt`, `DoubleEnt`, `Pair`
-
-Lightweight value wrappers. Any Python object can be used as a `Content`
-value — these exist only for cases where a typed wrapper is convenient.
-
-```python
-IntEnt(value)         # name auto-generated from int(value)
-DoubleEnt(value)
-Pair(key, value)      # NamedTuple — used internally by Couprel
-```
+- A bag is a multiset. The order of values within one port is the order
+  in which they were delivered. There is no ordering across ports.
+- Every receiver gets its own lists, so a model may mutate `x`. A model
+  may also reuse the lists it returns from `out()`.
+- `Couprel` stores couplings as `(component, port)` tuples:
+  `g.get_couprel().translate("src", "out") -> {("sink", "in"), ...}`.
+- `sim_inject(e, port, value)` or `sim_inject(e, {port: [values]})` injects
+  external input.
 
 ---
 

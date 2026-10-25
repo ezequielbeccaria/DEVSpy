@@ -7,7 +7,7 @@ Every port implementation (java/, cpp/, other_python/) mirrors this exactly, and
 the STATS counters must match across engines.
 """
 
-from devspy import Atomic, Content, Digraph, IntEnt, Message
+from devspy import Atomic, Digraph
 
 STATS = {"int": 0, "ext": 0, "sink": 0}
 
@@ -34,9 +34,7 @@ class Gen(Atomic):
         pass
 
     def out(self):
-        m = Message()
-        m.add(Content("out", IntEnt(self.k)))
-        return m
+        return {"out": [self.k]}
 
 
 class Proc(Atomic):
@@ -51,9 +49,7 @@ class Proc(Atomic):
 
     def deltext(self, e, x):
         STATS["ext"] += 1
-        for c in x:
-            if c.get_port_name() == "in":
-                self.count += 1
+        self.count += len(x.get("in", ()))
         if self.phase_is("passive"):
             self.hold_in("active", 0.1)
         else:
@@ -64,9 +60,7 @@ class Proc(Atomic):
         self.passivate()
 
     def out(self):
-        m = Message()
-        m.add(Content("out", IntEnt(self.count)))
-        return m
+        return {"out": [self.count]}
 
 
 class Sink(Atomic):
@@ -82,11 +76,11 @@ class Sink(Atomic):
 
     def deltext(self, e, x):
         STATS["ext"] += 1
-        STATS["sink"] += len(x)
+        STATS["sink"] += sum(len(v) for v in x.values())
         self.passivate()
 
     def out(self):
-        return Message()
+        return {}
 
 
 def level(width, depth):

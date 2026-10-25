@@ -30,7 +30,7 @@ An atomic model defines a `(phase, sigma)` state and the four DEVS transition
 functions: `initialize`, `deltint`, `deltext`, `out` (and optionally `deltcon`).
 
 ```python
-from devspy import Atomic, Content, DevsSuiteFacade, IntEnt, Message
+from devspy import Atomic, Bag, DevsSuiteFacade
 
 
 class Beeper(Atomic):
@@ -47,10 +47,8 @@ class Beeper(Atomic):
         self._count += 1
         self.hold_in("active", 1.0)
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("beep", IntEnt(self._count + 1)))
-        return m
+    def out(self) -> Bag:
+        return {"beep": [self._count + 1]}
 
 
 facade = DevsSuiteFacade(Beeper())
@@ -63,7 +61,7 @@ facade.simulate_to_time(5.0)
 A coupled model is a `Digraph` with components and couplings between their ports:
 
 ```python
-from devspy import Atomic, Content, DevsSuiteFacade, Digraph, IntEnt, Message
+from devspy import Atomic, DevsSuiteFacade, Digraph
 
 
 class Source(Atomic):
@@ -78,9 +76,7 @@ class Source(Atomic):
         self.hold_in("emit", 1.0)
 
     def out(self):
-        m = Message()
-        m.add(Content("out", IntEnt(1)))
-        return m
+        return {"out": [1]}
 
 
 class Sink(Atomic):
@@ -94,9 +90,8 @@ class Sink(Atomic):
         self.passivate()
 
     def deltext(self, e, x):
-        for c in x:
-            if c.get_port_name() == "in":
-                self.received += 1
+        # x maps each input port to the values that arrived on it at this instant
+        self.received += len(x.get("in", ()))
 
 
 src, snk = Source(), Sink()

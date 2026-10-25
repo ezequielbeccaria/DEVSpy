@@ -17,7 +17,7 @@ import os
 import random
 import sys
 
-from devspy import Atomic, Content, DevsSuiteFacade, Digraph, IntEnt, Message
+from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
 from devspy.simulation.atomic_simulator import AtomicSimulator
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -27,8 +27,8 @@ sys.path.insert(0, HERE)
 TRACE: list[str] = []
 
 
-def _bag(x: Message) -> str:
-    return "[" + ",".join(sorted(f"{c.get_port_name()}={c.get_value()!r}" for c in x)) + "]"
+def _bag(x: Bag) -> str:
+    return "[" + ",".join(sorted(f"{port}={v!r}" for port, vals in x.items() for v in vals)) + "]"
 
 
 # --- instrumentation: wrap the atomic-level primitives, which neither version changed
@@ -40,11 +40,11 @@ def _wrap(self, t, x=None):
     m = self.my_model
     bag = self.input if x is None else x
     kind = None
-    if not bag.is_empty() and t == self.t_n:
+    if bag and t == self.t_n:
         kind = "con"
     elif t == self.t_n:
         kind = "int"
-    elif not bag.is_empty():
+    elif bag:
         kind = "ext"
     if kind:
         TRACE.append(f"{t:.9g} {m.get_name()} {kind} e={t - self.t_l:.9g} x={_bag(bag)}")
@@ -53,7 +53,7 @@ def _wrap(self, t, x=None):
 
 def _cio(self, t):
     _orig_cio(self, t)
-    if not self.output.is_empty():
+    if self.output:
         TRACE.append(f"{t:.9g} {self.my_model.get_name()} out y={_bag(self.output)}")
 
 
@@ -88,7 +88,7 @@ def _instrument_models():
 
             def out_(self):
                 y = out(self)
-                if not y.is_empty():
+                if y:
                     TRACE.append(f"{t_of(self):.9g} {self.get_name()} out y={_bag(y)}")
                 return y
 
@@ -127,7 +127,7 @@ class RndAtomic(Atomic):
         self._next()
 
     def deltext(self, e, x):
-        self.acc += sum(int(c.get_value()) for c in x) + int(e * 10)
+        self.acc += sum(v for vals in x.values() for v in vals) + int(e * 10)
         if self.acc % 3 == 0:
             self.cont(e)
         else:
@@ -139,10 +139,7 @@ class RndAtomic(Atomic):
         self.deltext(0.0, x)
 
     def out(self):
-        m = Message()
-        for i in range(self.n_out):
-            m.add(Content(f"o{i}", IntEnt(self.acc + self.k + i)))
-        return m
+        return {f"o{i}": [self.acc + self.k + i] for i in range(self.n_out)}
 
 
 def random_model(seed: int) -> Digraph:

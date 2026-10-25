@@ -7,14 +7,7 @@
 
 from __future__ import annotations
 
-from devspy import (
-    Atomic,
-    Content,
-    DevsSuiteFacade,
-    Digraph,
-    IntEnt,
-    Message,
-)
+from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
 
 GEN_PERIOD = 2.0
 PROCESS_TIME = 3.0
@@ -35,14 +28,12 @@ class Generator(Atomic):
         self._job_id += 1
         self.hold_in("active", GEN_PERIOD)
 
-    def deltext(self, e: float, x: Message) -> None:
-        if any(c.get_port_name() == "stop" for c in x):
+    def deltext(self, e: float, x: Bag) -> None:
+        if "stop" in x:
             self.passivate()
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("out", IntEnt(self._job_id + 1)))
-        return m
+    def out(self) -> Bag:
+        return {"out": [self._job_id + 1]}
 
 
 class Processor(Atomic):
@@ -60,21 +51,17 @@ class Processor(Atomic):
         self._current = None
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
+    def deltext(self, e: float, x: Bag) -> None:
         if self.phase_is("passive"):
-            for c in x:
-                if c.get_port_name() == "in":
-                    self._current = int(c.get_value())
-                    self.hold_in("busy", PROCESS_TIME)
-                    return
+            jobs = x.get("in")
+            if jobs:
+                self._current = jobs[0]
+                self.hold_in("busy", PROCESS_TIME)
         else:
             self.cont(e)
 
-    def out(self) -> Message:
-        m = Message()
-        if self._current is not None:
-            m.add(Content("out", IntEnt(self._current)))
-        return m
+    def out(self) -> Bag:
+        return {"out": [self._current]} if self._current is not None else {}
 
 
 class Transducer(Atomic):
@@ -100,12 +87,12 @@ class Transducer(Atomic):
         else:
             self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
+    def deltext(self, e: float, x: Bag) -> None:
         self._clock += e
         self._record(x)
         self.cont(e)
 
-    def deltcon(self, e: float, x: Message) -> None:
+    def deltcon(self, e: float, x: Bag) -> None:
         # Confluent: internal event fires at tN with simultaneous input.
         # Advance the clock by sigma exactly once, then transition and record.
         self._clock += self.sigma
@@ -115,18 +102,12 @@ class Transducer(Atomic):
             self.passivate()
         self._record(x)
 
-    def _record(self, x: Message) -> None:
-        for c in x:
-            if c.get_port_name() == "arrived":
-                self.arrivals.append((self._clock, int(c.get_value())))
-            elif c.get_port_name() == "solved":
-                self.completions.append((self._clock, int(c.get_value())))
+    def _record(self, x: Bag) -> None:
+        self.arrivals.extend((self._clock, job) for job in x.get("arrived", ()))
+        self.completions.extend((self._clock, job) for job in x.get("solved", ()))
 
-    def out(self) -> Message:
-        m = Message()
-        if self.phase_is("observing"):
-            m.add(Content("stop", IntEnt(1)))
-        return m
+    def out(self) -> Bag:
+        return {"stop": [1]} if self.phase_is("observing") else {}
 
 
 def build() -> tuple[Digraph, Transducer]:

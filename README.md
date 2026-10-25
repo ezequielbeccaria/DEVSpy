@@ -13,7 +13,7 @@ pip install .                 # plain pip, no dev tools
 ## Hello, atomic
 
 ```python
-from devspy import Atomic, Content, DevsSuiteFacade, IntEnt, Message
+from devspy import Atomic, DevsSuiteFacade
 
 
 class Beeper(Atomic):
@@ -28,9 +28,7 @@ class Beeper(Atomic):
         self.hold_in("active", 1.0)
 
     def out(self):
-        m = Message()
-        m.add(Content("beep", IntEnt(1)))
-        return m
+        return {"beep": [1]}  # {output port: [values]}
 
 
 facade = DevsSuiteFacade(Beeper())
