@@ -206,6 +206,107 @@ and after. The 4 failures in `tests/env/test_invariants.py` predate this work.
    `Couprel.translate`, `__slots__`, and no `hasattr`/`isinstance` in the loop.
 4. Re-evaluate mypyc, or Cython, once (1)–(3) make the loop self-contained.
 
+## Iteration 3: flat event-driven kernel (branch `perf/flat-kernel`)
+
+We dropped the goal of mirroring DEVSJAVA's tree of nested coordinators. The
+profile after the quick wins showed that ~70% of the time on the 3×50 model went
+into re-routing each message at every level: `send_messages` +
+`Couprel.translate` + new `Content`/`Port`/`Pair` objects per hop. Delivering
+10,000 messages to the sink created 315,000 `Content` objects.
+
+### Design
+
+1. **Flattening at construction.** The coordinator walks the `Digraph` tree
+   once. It creates one `CoupledSimulator` per atomic, in depth-first component
+   order, and resolves every coupling path (EIC/IC/EOC through any number of
+   levels) into `fanout`: output port → `[(dst_port, [target sims])]`.
+   `Digraph` is now only a modelling construct.
+2. **Event heap** of `(t_n, index, version)` with lazy invalidation. Each round
+   pops IMM(t), applies λ, routes the outputs, applies δ to IMM(t) ∪ INF(t)
+   sorted by index, and pushes only those back.
+3. **Light messages.** There is one `Content` per destination port, shared by
+   all its receivers, or the source `Content` itself when the port name
+   matches. `Content` stores the port name and builds a `Port` only on demand.
+4. **Single loop**, with no per-level hooks or `hasattr` in the hot path.
+5. `reset()` re-initializes the atomics (only atomics, in component order, as
+   RLDEVSpy-TrackRailway expects) and rebuilds the heap, **without
+   re-flattening**.
+
+### Formal validation
+
+- **Flattening** is the *direct connection* construction that PythonPDEVS also
+  uses. It is justified by PDEVS closure under coupling (Zeigler, Praehofer &
+  Kim): a hierarchical PDEVS model and the flat
+  model whose couplings are the composition of the path couplings have the same
+  I/O behaviour. Couplings carry no transfer functions in DEVSpy, so
+  composition is just concatenating the paths. A digraph input coupled straight
+  to its own output is not a valid DEVS coupling (d ≠ N). The hierarchical
+  kernel silently dropped it, and so does the flat one.
+- **Scheduler**: the round still applies λ to IMM(t) and δ to IMM(t) ∪ INF(t),
+  and `tN = min tN_d` (the heap minimum). Only the data structure changed.
+- **Determinism**: λ and δ run in depth-first index order, the same order the
+  hierarchical kernel used. The order of contents inside a bag can differ when
+  messages reach a receiver from different hierarchy levels. Bags are
+  multisets in PDEVS, so this is semantically irrelevant.
+
+### Empirical validation
+
+- `trace_diff.py --model-level` now also records the absolute time of external
+  transitions. Over 206 models it captures 48,617 events with time, `e` and
+  bags, plus the multiset of root outputs. The result is **identical** for the
+  baseline (`0857ff6`), quick-wins (`eb23a82`) and flat (`6aa16ed`) kernels:
+  `ALL aa4c587580984747`.
+- `tests/test_flat_kernel.py` covers routing across 3 levels up and 3 levels
+  down, `sim_inject` into a nested atomic, repeated `reset()`, incremental
+  `simulate_to_time` against a one-shot run, `deep_cloning`, and the dropped
+  input-to-output coupling. These tests pass on **both** the hierarchical and
+  the flat kernel.
+- RLDEVSpy: 231 passed. RLDEVSpy-TrackRailway: unchanged (106 passed, 4
+  failures that predate this work).
+
+### Results
+
+DEVStone-like, simulation ms (warm median):
+
+| config | DEVSpy base | quick wins | **flat** | PyPDEVS-min | DEVSJAVA tuned | xDEVS flat |
+|---|---|---|---|---|---|---|
+| 5×3, 1000 ev | 154 | 112 | **38** | 28 | 61 | 65 |
+| 10×10, 1000 ev | 996 | 642 | **248** | 154 | 307 | 381 |
+| 200×1, 1000 ev | 1480 | 1033 | **532** | 333 | 492 | 863 |
+| 3×50, 500 ev | 2223 | 1603 | **145** | 90 | 567 | 231 |
+| 20×20, 500 ev | 2011 | 1238 | **515** | 325 | 583 | 803 |
+
+RL-shaped workload:
+
+| | quick wins | **flat** | PyPDEVS-min | DEVSJAVA tuned | xDEVS |
+|---|---|---|---|---|---|
+| ms/episode, 8 sections | 9.05 | **5.21** | 4.55 | 5.11 | 7.78 |
+| ms/episode, 64 sections | 212 | **60.7** | 31.7 | 179 | 65.9 |
+| 20 episodes, whole process ms | 224 | **143** | 113 | 344 | 224 |
+| 16 workers, episodes/s | 1030 | **1682** | 1926 | 540 | 1126 |
+| 16 workers, total RSS MiB | 223 | **221** | 186 | 2298 | 380 |
+
+Takeaways:
+
+- **2.6–11× faster than quick wins and 2.8–15× faster than the baseline.** The
+  deep 3×50 hierarchy gains the most (2223 → 145 ms): depth no longer costs
+  anything at run time.
+- **DEVSJAVA is matched or beaten.** DEVSpy is faster than a tuned, warm JVM on
+  4 of 5 DEVStone shapes, and 8% slower on the flat 200×1 shape. On RL it ties
+  per episode with 8 sections and is 2.9× faster with 64 sections. It keeps the
+  advantages already measured: no warm-up, ~10× less RAM, and 3.1× the
+  throughput with 16 actors.
+- **PyPDEVS-minimal is now 1.4–1.6× ahead on DEVStone** (it was 3–18× ahead)
+  and 1.15–1.9× ahead on RL. DEVSpy is faster than xDEVS (with or without
+  flattening) everywhere.
+- **Where the remaining gap is.** In the flat kernel's profile (20×20), the
+  kernel is ~32% of the time. The rest is the model and the DEVSJAVA-style
+  modelling API: `IntEnt` wrappers, iterating `Message`/`Content`, and the
+  `passivate → passivate_in → hold_in` chain. The PyPDEVS port uses plain ints
+  and dicts. Closing the gap further is mostly about a leaner modelling API,
+  such as plain values on ports and direct state assignment, not about the
+  kernel.
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:
