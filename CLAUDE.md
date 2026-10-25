@@ -21,6 +21,8 @@ poetry build
 
 When adding a dependency, commit `pyproject.toml` and `poetry.lock` together.
 
+Any change to `simulation/` must keep DEVS semantics. Prove it with the trace diff in `benchmarks/README.md`: the λ/δ traces of the old and new engine must be byte-identical. Performance work is measured with the `benchmarks/run_*.py` runners, which append to `benchmarks/results/*.jsonl`. Log conclusions in `benchmarks/FINDINGS.md`.
+
 ## Architecture
 
 The code is split into two parallel trees: **modeling** (what the user writes) and **simulation** (what drives it).
@@ -43,6 +45,7 @@ The code is split into two parallel trees: **modeling** (what the user writes) a
 ## Conventions
 
 - DEVS method names (`deltint`, `deltext`, `deltcon`, `ta`, `out`) stay verbatim. Everything else is `snake_case`.
-- The hot loop is `Coordinator.compute_input_output` / `wrap_deltfunc`. Keep it simple and avoid speculative abstractions.
+- The hot loop is `Coordinator.compute_input_output` / `wrap_deltfunc`. Keep it simple and avoid speculative abstractions. It relies on the invariant that every child simulator's `t_n` is current after `initialize`/`wrap_deltfunc`. Only imminent children get λ, and only imminent children or those with input get δ.
+- Never format log messages unconditionally in hot paths. Guard them with `devspy.util.logging.is_enabled(level)`.
 - Tests are one file per topic under `tests/`. Example-driven tests import the example's `run()` and assert on the event traces it records. Some do `from examples.gpt_model import run` (this relies on pytest putting the repo root on `sys.path`). Others insert `examples/` into `sys.path` first. `tests/test_parity_gpt.py` is the reference trace for the Generator → Processor → Transducer model.
 - User-facing docs are in `docs/` (concepts, API reference, examples). Update `docs/api-reference.md` when the public API in `src/devspy/__init__.py` changes.

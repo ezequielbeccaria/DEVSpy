@@ -7,7 +7,7 @@ from devspy.modeling.content import Content
 from devspy.modeling.devs import IOBasicDevs
 from devspy.modeling.message import Message
 from devspy.modeling.port import Port
-from devspy.util.logging import FULL, log
+from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
 
@@ -24,6 +24,8 @@ class AtomicSimulator:
         self.t_n: float = 0.0
         self.input: Message = Message()
         self.output: Message = Message()
+        # The default Atomic.show_state only logs; skip calling it when logging is off.
+        self.custom_show_state: bool = _has_custom_show_state(model)
 
     # --- time accessors ----------------------------------------------------
     def next_tn(self) -> float:
@@ -91,7 +93,8 @@ class AtomicSimulator:
     # --- show/print --------------------------------------------------------
     def show_model_state(self) -> None:
         assert self.my_model is not None
-        self.my_model.show_state()
+        if self.custom_show_state or is_enabled(FULL):
+            self.my_model.show_state()
 
     def show_output(self) -> None:
         if self.output is None or self.output.is_empty():
@@ -103,7 +106,8 @@ class AtomicSimulator:
         i = 1
         self.t_n = self.next_tn()
         while self.t_n < INFINITY and i <= num_iter:
-            log(f"ITERATION {i} ,time: {self.t_n}", FULL)
+            if is_enabled(FULL):
+                log(f"ITERATION {i} ,time: {self.t_n}", FULL)
             self.compute_input_output(self.t_n)
             self.show_output()
             self.delt_func(self.t_n)
@@ -136,3 +140,11 @@ class AtomicSimulator:
 
     def _compute_input_output_hook(self) -> None:
         pass
+
+
+def _has_custom_show_state(model: Optional[IOBasicDevs]) -> bool:
+    from devspy.modeling.atomic import Atomic
+
+    if model is None:
+        return False
+    return type(model).show_state is not Atomic.show_state
