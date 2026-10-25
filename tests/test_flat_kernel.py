@@ -142,3 +142,20 @@ def test_input_coupled_straight_to_output_is_rejected():
     top.add(inner)
     with pytest.raises(ModelStructureError, match="input straight to an output"):
         DevsSuiteFacade(top)
+
+
+def test_sim_inject_at_an_event_time_runs_lambda_before_delta():
+    # Pulse fires at t=1.0; an injection at exactly 1.0 is a confluent round:
+    # the pulse's output must still reach the recorder.
+    pulse, rec, ext = Pulse("p", n=1), Recorder("r"), Recorder("x")
+    top = Digraph("top")
+    top.add_inport("in")
+    for c in (pulse, rec, ext):
+        top.add(c)
+    top.add_coupling(pulse, "out", rec, "in")
+    top.add_coupling(top, "in", ext, "in")
+    f = DevsSuiteFacade(top)
+    f.reset()
+    f.get_simulator().sim_inject(1.0, "in", "x")
+    assert rec.seen == [(1.0, 0)]
+    assert ext.seen == [(1.0, "x")]
