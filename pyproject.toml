@@ -5,15 +5,31 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry]
 name = "devspy"
 version = "0.3.0"
-description = "Python port of Devs-Suite-Facade — headless DEVS simulation with time-limit support"
+description = "Parallel DEVS discrete-event simulation in pure Python: fast flat kernel, variable structure, real time, gym-style stepping"
 readme = "README.md"
 license = "Apache-2.0"
 authors = ["Ezequiel Beccaria <ezequielbeccaria@gmail.com>"]
-keywords = ["devs", "simulation", "discrete-event", "modeling"]
+homepage = "https://github.com/ezequielbeccaria/DEVSpy"
+repository = "https://github.com/ezequielbeccaria/DEVSpy"
+documentation = "https://github.com/ezequielbeccaria/DEVSpy/tree/main/docs"
+keywords = ["devs", "pdevs", "parallel-devs", "dsdevs", "discrete-event", "simulation", "modeling"]
 classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
-    "Topic :: Scientific/Engineering :: Simulation",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
 ]
 packages = [{ include = "devspy", from = "src" }]
 
