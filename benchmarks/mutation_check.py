@@ -30,7 +30,7 @@ M = [
   ("removal keeps couplings", D, "        for src, dst in dropped:\n            self._couprel.remove(src, dst)", "        pass"),
   ("real time: input delivered at the last event", R, "self._deliver(item, max(min(now_t, sim.next_tn(), until), sim.t_l))", "self._deliver(item, sim.t_l)"),
   ("real time: pacing ignores speed", R, "else (horizon - now_t) / self.speed", "else (horizon - now_t)"),
-  ("scheduler: switch without rebuilding the heap", C, "        self._scan = scan\n        self._rebuild_heap()", "        self._scan = scan"),
+  ("scheduler: switch without rebuilding the heap", C, "        self._rebuild_heap()  # from the simulators' t_n (empty in scan mode)", "        pass"),
   ("scheduler: scan finds overdue models too", C, "return [s for s in self.simulators if s.t_n == time]", "return [s for s in self.simulators if s.t_n <= time + 0.25]"),
   ("root output dropped", C, "inp = root_out if dsim is None else dsim.input", "inp = {} if dsim is None else dsim.input"),
 ]

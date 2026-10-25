@@ -24,7 +24,7 @@ def scheduler(request, monkeypatch):
     """Run a test under each scheduler; "flip" switches heap <-> scan every round."""
     if request.param == "flip":
         def flip(self):
-            self._rounds_seen = self._reschedules = 0
+            self._next_choice = self._round_count + 1
             self._set_scan(not self._scan)
 
         monkeypatch.setattr(Coordinator, "scheduler", "auto")
