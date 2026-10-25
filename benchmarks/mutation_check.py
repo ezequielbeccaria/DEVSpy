@@ -3,6 +3,8 @@ confirm tests/test_reference_pdevs.py fails for each. Restores every file.
 
 usage (repo root): poetry run python benchmarks/mutation_check.py
 """
+import importlib.util
+import os
 import pathlib
 import subprocess
 import sys
@@ -28,6 +30,8 @@ M = [
   ("removal keeps couplings", D, "        for src, dst in dropped:\n            self._couprel.remove(src, dst)", "        pass"),
   ("real time: input delivered at the last event", R, "self._deliver(item, max(min(now_t, sim.next_tn(), until), sim.t_l))", "self._deliver(item, sim.t_l)"),
   ("real time: pacing ignores speed", R, "else (horizon - now_t) / self.speed", "else (horizon - now_t)"),
+  ("scheduler: switch without rebuilding the heap", C, "        self._scan = scan\n        self._rebuild_heap()", "        self._scan = scan"),
+  ("scheduler: scan finds overdue models too", C, "return [s for s in self.simulators if s.t_n == time]", "return [s for s in self.simulators if s.t_n <= time + 0.25]"),
   ("root output dropped", C, "inp = root_out if dsim is None else dsim.input", "inp = {} if dsim is None else dsim.input"),
 ]
 for name, path, old, new in M:
@@ -37,7 +41,11 @@ for name, path, old, new in M:
     try:
         tests = ["tests/test_reference_pdevs.py", "tests/test_real_time.py"]
         cmd = [sys.executable, "-m", "pytest", "-q", "-x", *tests]
-        r = subprocess.run(cmd, capture_output=True, text=True)
+        env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
+        r = subprocess.run(cmd, capture_output=True, text=True, env=env)
         print(f"{'CAUGHT' if r.returncode else 'MISSED'}  {name}")
     finally:
         path.write_text(src)
+        # A same-length mutation restored within the same second would leave a
+        # .pyc that still looks fresh (mtime + size): drop it.
+        pathlib.Path(importlib.util.cache_from_source(str(path))).unlink(missing_ok=True)

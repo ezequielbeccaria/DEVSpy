@@ -69,6 +69,11 @@ and fails loudly on invalid models.
 
 ### Performance
 
+- Adaptive scheduler (`Coordinator.scheduler`): a linear scan replaces the heap
+  when the network is small or most models move every round. DEVStone runs
+  14–17% faster and the watchdog pattern 19% faster. Sparse models keep the
+  heap, which is up to 120× faster for them.
+
 - The coordinator rebuilds its event heap when stale entries pile up (more than
   `2·n + 64` entries), and a receiver whose next event time does not move keeps
   its heap entry. Models whose inputs keep pushing timeouts later (watchdogs)

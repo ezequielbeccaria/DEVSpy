@@ -748,6 +748,85 @@ when its rounds run on the wall clock.
     `phase_is`, `get_model`.
   - Added the `py.typed` marker.
 
+## Iteration 12: adaptive scheduler; copy contract and mypyc revisited (branch `perf/evaluate-remaining`)
+
+The three levers left for last (A3, A6, A8), each measured before deciding.
+
+### A6: adaptive scheduler (kept)
+
+DEVStone is dense. In 20×20, 191 of 383 models are imminent each round, and
+the heap (`heappop`/`heappush`, `_pop`) took about 15% of the time. A linear
+scan, `min(map(attrgetter("t_n"), sims))` plus `[s for s in sims if s.t_n ==
+t]`, costs about 0.05 µs per simulator per round. The heap costs about 0.27 µs
+per reschedule. So the scan wins when n ≲ 5 × (reschedules per round), and
+loses badly on large sparse models.
+
+With `scheduler = "auto"` the coordinator counts reschedules and, every 64
+rounds, picks one mode, with hysteresis: it switches to the scan if
+n < 4.5k + 8 and back to the heap if n > 6.5k + 16. `"heap"` and `"scan"` force
+a mode. Results are in `results/scheduler.jsonl` and come from
+`benchmarks/scheduler_bench.py`; the table shows median ms:
+
+| Case | heap | scan | auto |
+|---|---|---|---|
+| DEVStone 20×20 | 330.6 | 270.9 | **275.6** (−17%) |
+| DEVStone 3×50 | 89.8 | 77.3 | **78.3** (−13%) |
+| DEVStone 200×1 | 342.6 | 284.1 | **286.9** (−16%) |
+| RL m=8, 200 episodes | 595.1 | 606.4 | 601.5 (+1%, noise) |
+| RL m=64, 30 episodes | 627.8 | 617.1 | 613.5 (−2%) |
+| Watchdog n=1000 | 411.6 | 321.1 | **333.1** (−19%) |
+| Sparse n=64 | 28.2 | 93.6 | 27.3 |
+| Sparse n=1024 | 32.0 | 1013.3 | 31.0 |
+| Sparse n=4096 | 33.6 | 4099.6 | 32.5 |
+
+`auto` is within 1–2% of the better mode in every case. A 256-round
+adaptation period left 4–5% on the table in DEVStone, so it was shortened to
+64. TrackRailway, with 9 atomics, runs in scan mode, is unchanged
+(108.8/111.3 vs 111.0/110.5 ms per episode) and has an identical trajectory
+digest.
+
+**PDEVS argument.** The scan is the literal definition, tN = min tN_d and
+IMM(t) = {d | tN_d = t}, in index order. The heap is an index over the same
+values. Switching modes rebuilds the heap from the simulators' t_n, so no
+event can be lost or duplicated across a switch.
+
+**Validation.** The oracle runs the base comparison (300), the step API (150),
+snapshot/restore (100) and variable structure (200) under three schedulers:
+heap, scan, and "flip", which switches modes after every round. The mutation
+check gains 2 scheduler mutations: switching without rebuilding the heap, and
+a scan that also picks up models due within 0.25. All **19 are caught**.
+
+### A8: no copy of routed lists (rejected)
+
+Delivering the sender's list itself instead of `list(values)` saves 4.2–5.8%
+(DEVStone 275.7 → 262.5, 77.7 → 73.9, 289.3 → 272.6 ms; RL m=8 613.5 → 587.8
+ms). But fan-out would then share one list among receivers, so a model that
+mutates its `x` corrupts its siblings' input, and a sender that reuses its
+list rewrites delivered bags. The current contract allows both. That is not
+worth 5%.
+
+### A3: mypyc (unchanged verdict)
+
+The earlier measurement (7–22%) stands. `deep_cloning()` still breaks under
+mypyc. `snapshot()`/`restore()` don't, since they copy attributes by hand, but
+per-platform wheels and CI would still be needed. Not pursued.
+
+### Measurement incident: stale bytecode after `mutation_check.py`
+
+The "default deltcon old e" mutation replaces `deltext(0, x)` with
+`deltext(e, x)`. Since iteration 11 those two have **the same length**.
+Restored within the same second, the file kept its size and mtime, so Python
+kept executing the mutated `.pyc`.
+
+- Detected when a test failed on a clean branch.
+- The PR #12 commit and its verification predate that run, so they are
+  unaffected.
+- The first scan-prototype numbers in this iteration were taken with that
+  stale code, and were **discarded**. Everything in the table above was
+  re-measured after clearing `__pycache__`.
+- `mutation_check.py` now runs its pytest subprocesses with
+  `PYTHONDONTWRITEBYTECODE=1` and deletes the `.pyc` of every file it restores.
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:

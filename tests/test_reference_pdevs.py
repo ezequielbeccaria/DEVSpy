@@ -15,7 +15,24 @@ from fractions import Fraction
 import pytest
 
 from devspy import Atomic, DevsSuiteFacade, Digraph
+from devspy.simulation.coordinator import Coordinator
 from tests import reference_pdevs
+
+
+@pytest.fixture(params=["heap", "scan", "flip"])
+def scheduler(request, monkeypatch):
+    """Run a test under each scheduler; "flip" switches heap <-> scan every round."""
+    if request.param == "flip":
+        def flip(self):
+            self._rounds_seen = self._reschedules = 0
+            self._set_scan(not self._scan)
+
+        monkeypatch.setattr(Coordinator, "scheduler", "auto")
+        monkeypatch.setattr(Coordinator, "_AUTO_PERIOD", 1)
+        monkeypatch.setattr(Coordinator, "_choose_scheduler", flip)
+    else:
+        monkeypatch.setattr(Coordinator, "scheduler", request.param)
+    return request.param
 
 
 def _multiset(bag):
@@ -184,7 +201,7 @@ def _run_reference(seed, end):
 
 
 @pytest.mark.parametrize("seed", range(300))
-def test_kernel_matches_reference_abstract_simulator(seed):
+def test_kernel_matches_reference_abstract_simulator(seed, scheduler):
     log, outputs = _run_devspy(seed, 40.0)
     ref_log, ref_outputs = _run_reference(seed, 40.0)
     assert log == ref_log
@@ -260,7 +277,7 @@ def _reference_with_injections(seed):
 
 
 @pytest.mark.parametrize("seed", range(150))
-def test_step_api_matches_reference(seed):
+def test_step_api_matches_reference(seed, scheduler):
     model, _ = random_model(seed)
     f = DevsSuiteFacade(_with_root_input(model))
     outputs = []
@@ -273,7 +290,7 @@ def test_step_api_matches_reference(seed):
 
 
 @pytest.mark.parametrize("seed", range(100))
-def test_snapshot_restore_replays_the_reference(seed):
+def test_snapshot_restore_replays_the_reference(seed, scheduler):
     model, _ = random_model(seed)
     f = DevsSuiteFacade(_with_root_input(model))
     injections = _injections(seed)
@@ -334,7 +351,7 @@ def test_observer_sees_every_transition_without_perturbing(seed):
 
 
 @pytest.mark.parametrize("seed", range(200))
-def test_variable_structure_matches_reference(seed):
+def test_variable_structure_matches_reference(seed, scheduler):
     model, log = random_model(seed, spawners=True)
     f = DevsSuiteFacade(_with_root_input(model))
     outputs = []
