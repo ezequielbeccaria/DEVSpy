@@ -568,6 +568,51 @@ when, does not change.
 - `trace_diff.py --model-level` is unchanged (`ALL 3e6ae84e413300cc`), and so
   is the TrackRailway trajectory digest (`ALL 11cc8d93d6e2c704`).
 
+## Iteration 8: driving, observing and checkpointing a simulation (branch `feat/step-api`)
+
+API work (C1–C3), no performance goal.
+
+| API | What | Why |
+|---|---|---|
+| `advance(until, stop_on_output)` | Runs rounds and returns the root outputs as `(t, bag)` | Root outputs used to be printable only |
+| `inject(bag, at=None)` | Runs the rounds strictly before `at`, then delivers (x, at) | Gym-style control from outside the model, without computing `e` |
+| `Observer` | `on_output(t, model, y)` and `on_transition(t, model, kind, e, x)` | Traces, metrics and animation without monkeypatching |
+| `snapshot()` / `restore()` | Copies the model attributes, times and heap; restores in place | Checkpoints and rollouts. `deep_cloning()` makes new model objects, so the user's references go stale |
+
+**PDEVS argument.**
+
+- `advance` is the root coordinator loop: it sends (*, t) and then (x = ∅, t)
+  while t_N ≤ until.
+- `inject(at=t)` first completes every round with t_N < t, using the bound
+  `math.nextafter(t, -inf)`. It then sends (x, t). If t = t_N, that is preceded
+  by (*, t), which is the confluent case fixed in iteration 6.
+- The absolute-time `inject_at` avoids `t_l + (t - t_l) ≠ t` rounding. With
+  that rounding a confluent injection could silently become two rounds.
+- Observers are notified after the fact and cannot change routing.
+- `restore` resets the full simulator state: every model's attributes, `t_l`,
+  `t_n`, `version`, the pending input bags and the heap. The scheduler
+  invariant therefore holds again.
+
+**Validation** (oracle from iteration 6):
+
+- `test_step_api_matches_reference` (150 models): the injection oracle driven
+  only through `inject`/`advance`. Per-model transitions and root outputs with
+  their times match.
+- `test_snapshot_restore_replays_the_reference` (100 models): advance to 13.3,
+  snapshot, then three times over restore and run to 40. Each replay matches
+  the reference.
+- `test_observer_sees_every_transition_without_perturbing` (100 models): logs
+  with an observer attached equal the reference, and the observer's
+  (t, kind) sequence per model equals the model's own log. A default
+  `deltcon` counts as one `"con"`.
+- 11 unit tests in `tests/test_step_api.py`.
+- The mutation check still catches all 11 mutations.
+
+**Cost** with no observer attached is one emptiness check per output and per
+transition. Against `22780c0` the difference is within noise: DEVStone 20×20
+328.5 → 333.2 ms on one sample, other shapes ±1%; RL m=64 22.74/23.14 →
+22.76/23.17 ms/ep across repeated runs.
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:

@@ -36,6 +36,8 @@ The code is split into two parallel trees: **modeling** (what the user writes) a
     - `reset()` re-initializes the atomics and rebuilds the heap without re-flattening.
   - `CoupledSimulator(AtomicSimulator)` is the per-atomic record that the coordinator drives (`t_l`, `t_n`, input bag, `fanout`, `index`, `version`). It has no loop of its own.
   - `TimeAtomicSimulator` and `TimeCoordinator` add time-limited runs.
+  - `observer.py`: `Observer` (`on_output`, `on_transition`), which `_lambda`/`_delta` notify only `if observers:`, plus the snapshot helpers. A snapshot deep-copies model attributes but keeps models, digraphs and simulators by reference.
+  - Root outputs go through `show_output()`. It prints them, or appends `(t, bag)` to `_sink` when the facade's `advance`/`inject` are collecting them. `inject_at(t, bag)` takes an absolute time, so it does not drift through `t_l + e`.
 - `facade.py`: `DevsSuiteFacade` is the public entry point. It wraps an `Atomic` in a `TimeAtomicSimulator`, or a `Digraph` in a `TimeCoordinator`. Its `simulate_iterations` calls the **base-class** `simulate(num_iter)` directly to skip the time-based override.
 
 ### Semantics to keep in mind (0.3.0 dropped the DEVSJAVA parity quirks)
