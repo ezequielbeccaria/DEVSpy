@@ -91,5 +91,6 @@ PDEVS argument and this diff; the reasoning is logged in
 RL episodes of RLDEVSpy-TrackRailway produce identical trajectories across
 engine versions.
 
-**CI** runs lint, the full suite (oracle included) on Python 3.9–3.13, and the
-mutation check.
+**CI** runs lint, the full suite (oracle included) on CPython 3.9–3.13 and
+PyPy 3.11, a check that PyPy and CPython produce the same λ/δ trace digest, and
+the mutation check.

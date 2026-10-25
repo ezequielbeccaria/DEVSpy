@@ -97,6 +97,8 @@ and fails loudly on invalid models.
   passes `0` too), so models using `int` or `Fraction` time never degrade to
   floats.
 - `py.typed`: the package ships its type hints.
+- CI on CPython 3.9–3.13 and PyPy 3.11. PyPy must reproduce CPython's λ/δ
+  trace exactly.
 - Documentation: new guides (running, variable structure, real time,
   correctness, performance), three new examples (`gym_loop`, `autoscaling`,
   `real_time_thermostat`), a LICENSE file, and package metadata for PyPI.
