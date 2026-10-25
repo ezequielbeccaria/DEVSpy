@@ -17,7 +17,7 @@ import statistics as pystats
 from collections import deque
 from dataclasses import dataclass
 
-from devspy import Atomic, Content, DevsSuiteFacade, Digraph, IntEnt, Message
+from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
 
 
 @dataclass
@@ -41,10 +41,8 @@ class Generator(Atomic):
         self._next_id += 1
         self.hold_in("active", self._rng.expovariate(self._lam))
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("out", Job(self._next_id + 1)))
-        return m
+    def out(self) -> Bag:
+        return {"out": [Job(self._next_id + 1)]}
 
 
 class Queue(Atomic):
@@ -65,21 +63,19 @@ class Queue(Atomic):
         self.max_size = 0
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
-        for c in x:
-            port = c.get_port_name()
-            if port == "arrive":
-                job = c.get_value()
-                if not self._server_busy and self._pending is None:
-                    self._pending = job
-                    self._server_busy = True
-                else:
-                    self._buffer.append(job)
-            elif port == "next":
-                if self._buffer:
-                    self._pending = self._buffer.popleft()
-                else:
-                    self._server_busy = False
+    def deltext(self, e: float, x: Bag) -> None:
+        # Arrivals first, then the server's "next" signal (fixed, documented order).
+        for job in x.get("arrive", ()):
+            if not self._server_busy and self._pending is None:
+                self._pending = job
+                self._server_busy = True
+            else:
+                self._buffer.append(job)
+        for _ in x.get("next", ()):
+            if self._buffer:
+                self._pending = self._buffer.popleft()
+            else:
+                self._server_busy = False
         self.max_size = max(self.max_size, len(self._buffer))
         if self._pending is not None:
             self.hold_in("send", 0.0)
@@ -90,11 +86,8 @@ class Queue(Atomic):
         self._pending = None
         self.passivate()
 
-    def out(self) -> Message:
-        m = Message()
-        if self._pending is not None:
-            m.add(Content("out", self._pending))
-        return m
+    def out(self) -> Bag:
+        return {"out": [self._pending]} if self._pending is not None else {}
 
 
 class Server(Atomic):
@@ -113,13 +106,12 @@ class Server(Atomic):
         self.busy_time = 0.0
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
+    def deltext(self, e: float, x: Bag) -> None:
         if self.phase_is("passive"):
-            for c in x:
-                if c.get_port_name() == "in":
-                    self._current = c.get_value()
-                    self.hold_in("busy", self._rng.expovariate(self._mu))
-                    return
+            items = x.get("in")
+            if items:
+                self._current = items[0]
+                self.hold_in("busy", self._rng.expovariate(self._mu))
         else:
             self.cont(e)
 
@@ -128,12 +120,10 @@ class Server(Atomic):
         self._current = None
         self.passivate()
 
-    def out(self) -> Message:
-        m = Message()
-        if self._current is not None:
-            m.add(Content("done", self._current))
-            m.add(Content("next", IntEnt(1)))
-        return m
+    def out(self) -> Bag:
+        if self._current is None:
+            return {}
+        return {"done": [self._current], "next": [1]}
 
 
 class Statistics(Atomic):
@@ -151,14 +141,10 @@ class Statistics(Atomic):
         self._clock = 0.0
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
+    def deltext(self, e: float, x: Bag) -> None:
         self._clock += e
-        for c in x:
-            port = c.get_port_name()
-            if port == "arrival":
-                self.arrivals.append((self._clock, c.get_value().id))
-            elif port == "departure":
-                self.departures.append((self._clock, c.get_value().id))
+        self.arrivals.extend((self._clock, job.id) for job in x.get("arrival", ()))
+        self.departures.extend((self._clock, job.id) for job in x.get("departure", ()))
 
 
 @dataclass

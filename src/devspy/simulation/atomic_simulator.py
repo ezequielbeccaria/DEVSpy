@@ -1,29 +1,26 @@
 from __future__ import annotations
 
 import math
-from typing import Optional
+from typing import Any, Optional
 
-from devspy.modeling.content import Content
-from devspy.modeling.devs import IOBasicDevs
-from devspy.modeling.message import Message
-from devspy.modeling.port import Port
+from devspy.modeling.devs import Bag, IOBasicDevs
 from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
 
 
 class AtomicSimulator:
-    """Ports DEVSJAVA's `atomicSimulator`.
+    """Drives a single atomic model through the DEVS state-transition protocol."""
 
-    Drives a single atomic model through the DEVS state-transition protocol.
-    """
+    __slots__ = ("my_model", "t_l", "t_n", "input", "output", "custom_show_state", "__dict__")
 
-    def __init__(self, model: Optional[IOBasicDevs] = None) -> None:
-        self.my_model: Optional[IOBasicDevs] = model
+    def __init__(self, model: Any = None) -> None:
+        # Any, not IOBasicDevs: Coordinator passes its Digraph here.
+        self.my_model: Any = model
         self.t_l: float = 0.0
         self.t_n: float = 0.0
-        self.input: Message = Message()
-        self.output: Message = Message()
+        self.input: Bag = {}
+        self.output: Bag = {}
         # The default Atomic.show_state only logs; skip calling it when logging is off.
         self.custom_show_state: bool = _has_custom_show_state(model)
 
@@ -40,10 +37,10 @@ class AtomicSimulator:
     def get_tl(self) -> float:
         return self.t_l
 
-    def get_output(self) -> Message:
+    def get_output(self) -> Bag:
         return self.output
 
-    def get_input(self) -> Message:
+    def get_input(self) -> Bag:
         return self.input
 
     def get_model(self) -> Optional[IOBasicDevs]:
@@ -60,35 +57,28 @@ class AtomicSimulator:
 
     # --- transition primitives --------------------------------------------
     def delt_func(self, t: float) -> None:
-        self.wrap_deltfunc(t, Message())
+        self.wrap_deltfunc(t, {})
 
-    def wrap_deltfunc(self, t: float, x: Optional[Message] = None) -> None:
-        """Ports `wrapDeltfunc(t, x)` — the DEVS state-transition dispatch."""
+    def wrap_deltfunc(self, t: float, x: Optional[Bag] = None) -> None:
+        """The DEVS state-transition dispatch: deltint, deltext or deltcon."""
         assert self.my_model is not None
         if x is None:
             x = self.input
-            self.input = Message()
-        if x.is_empty() and not self.equal_tn(t):
+            self.input = {}
+        if not x and t != self.t_n:
             return
-        if (not x.is_empty()) and self.equal_tn(t):
-            e = t - self.t_l
-            self.my_model.deltcon(e, x)
-        elif self.equal_tn(t):
+        if x and t == self.t_n:
+            self.my_model.deltcon(t - self.t_l, x)
+        elif t == self.t_n:
             self.my_model.deltint()
-        elif not x.is_empty():
-            e = t - self.t_l
-            self.my_model.deltext(e, x)
-        self._wrap_deltfunc_hook()
+        else:
+            self.my_model.deltext(t - self.t_l, x)
         self.t_l = t
         self.t_n = self.t_l + self.my_model.ta()
 
     def compute_input_output(self, t: float) -> None:
         assert self.my_model is not None
-        if self.equal_tn(t):
-            self.output = self.my_model.out()
-        else:
-            self.output = Message()
-        self._compute_input_output_hook()
+        self.output = (self.my_model.out() or {}) if t == self.t_n else {}
 
     # --- show/print --------------------------------------------------------
     def show_model_state(self) -> None:
@@ -97,12 +87,11 @@ class AtomicSimulator:
             self.my_model.show_state()
 
     def show_output(self) -> None:
-        if self.output is None or self.output.is_empty():
-            return
-        self.output.print()
+        if self.output:
+            print(_format_bag(self.output))
 
     # --- simulation loops --------------------------------------------------
-    def simulate(self, num_iter: int) -> None:
+    def simulate(self, num_iter: float) -> None:
         i = 1
         self.t_n = self.next_tn()
         while self.t_n < INFINITY and i <= num_iter:
@@ -111,38 +100,27 @@ class AtomicSimulator:
             self.compute_input_output(self.t_n)
             self.show_output()
             self.delt_func(self.t_n)
-            # delt_func → wrap_deltfunc already updated t_l and t_n.
             self.show_model_state()
             i += 1
         log(f"Terminated Normally at ITERATION {i} ,time: {self.t_n}", FULL)
 
     # --- injection ---------------------------------------------------------
-    def make_message(self) -> Message:
-        return Message()
-
-    def sim_inject(self, e: float, port_or_msg, value=None) -> None:
+    def sim_inject(self, e: float, port_or_bag: str | Bag, value: Any = None) -> None:
+        """Inject `value` on input `port` (or a whole bag) `e` after the last event."""
         assert self.my_model is not None
-        if isinstance(port_or_msg, Message):
-            m = port_or_msg
-        else:
-            port = port_or_msg if isinstance(port_or_msg, Port) else Port(str(port_or_msg))
-            m = Message()
-            m.add(Content(port, value))
+        bag = port_or_bag if isinstance(port_or_bag, dict) else {str(port_or_bag): [value]}
         t = self.t_l + e
         if e <= self.my_model.ta():
-            self.wrap_deltfunc(t, m)
+            self.wrap_deltfunc(t, bag)
         else:
             log(f"Time: {self.t_l} ,ERROR input rejected : elapsed time {e} out of bounds", FULL)
 
-    # --- hooks (no-ops, kept for parity) ----------------------------------
-    def _wrap_deltfunc_hook(self) -> None:
-        pass
 
-    def _compute_input_output_hook(self) -> None:
-        pass
+def _format_bag(bag: Bag) -> str:
+    return " ".join(f"port: {port} value: {v!r}" for port, values in bag.items() for v in values)
 
 
-def _has_custom_show_state(model: Optional[IOBasicDevs]) -> bool:
+def _has_custom_show_state(model: Any) -> bool:
     from devspy.modeling.atomic import Atomic
 
     if model is None:

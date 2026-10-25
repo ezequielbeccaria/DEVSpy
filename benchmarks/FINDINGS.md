@@ -307,6 +307,96 @@ Takeaways:
   such as plain values on ports and direct state assignment, not about the
   kernel.
 
+## Iteration 4: plain dict bags, no wrappers (branch `perf/dict-messages`, 0.2.0)
+
+This is a **breaking change**, decided as a clean break: `Message`, `Content`,
+`Port`, `Entity`, `IntEnt`, `DoubleEnt` and `Pair` were removed. A bag is now a
+plain `dict[str, list]` (port → values), exported as the type alias
+`devspy.Bag`. Values are plain Python objects. `Couprel` stores
+`(component, port)` tuples.
+
+```python
+def deltext(self, e, x):  for job in x.get("in", ()): ...
+def out(self):            return {"out": [self.job]}       # {} = no output
+```
+
+Kernel changes made at the same time:
+
+- Routing appends values straight into the receiver's dict. Each receiver gets
+  its own list per port, so senders may reuse their lists and receivers may
+  mutate theirs.
+- The `simulate` loops call a single fused `_round(t)`: pop IMM, λ, then δ.
+- The sort key is C-level (`attrgetter("index")`).
+- `sigma` is read directly when the model doesn't override `ta()`.
+- `__slots__` on the simulators.
+- `passivate()`/`passivate_in()` assign fields directly instead of going
+  through `hold_in()`.
+
+### Validation
+
+- `trace_diff.py --model-level` gives the same `ALL aa4c587580984747` (48,617
+  events). The trace tool and its models were ported to the new API. With plain
+  ints, `repr(5)` renders exactly like the old `IntEnt(5)`, so the digests are
+  directly comparable.
+- Example outputs (`gpt_model`, `mm1_queue`, `manufacturing_line`) are
+  byte-identical to the previous branch. Benchmark counters are unchanged.
+- **Downstream migration.** RLDEVSpy (4 modules plus tests) is at 231/231.
+  RLDEVSpy-TrackRailway (3 modules) is unchanged at 106 passed and 4 failures
+  that predate this work.
+- **End-to-end trajectory check**, `downstream/trackrailway_trace.py`: real
+  TrackRailway episodes (1/3/5 trains × 3 seeds × 3 episodes with `reset()`, a
+  seeded random agent, and per decision an observation hash, the action and the
+  reward). The old stack (flat kernel + RLDEVSpy/TrackRailway `main`) and the
+  new stack give **identical** results: `ALL 11cc8d93d6e2c704`.
+
+### Results
+
+DEVStone-like, simulation ms (warm median):
+
+| config | baseline | flat kernel | **dict bags** | PyPDEVS-min | DEVSJAVA tuned | Cadmium (C++) |
+|---|---|---|---|---|---|---|
+| 5×3, 1000 ev | 154 | 38 | **23** | 28 | 61 | 1 |
+| 10×10, 1000 ev | 996 | 248 | **147** | 154 | 307 | 7 |
+| 200×1, 1000 ev | 1480 | 532 | **322** | 333 | 492 | 12 |
+| 3×50, 500 ev | 2223 | 145 | **86** | 90 | 567 | 6 |
+| 20×20, 500 ev | 2011 | 515 | **310** | 325 | 583 | 15 |
+
+RL-shaped workload:
+
+| | flat kernel | **dict bags** | PyPDEVS-min | DEVSJAVA tuned |
+|---|---|---|---|---|
+| ms/episode, 8 sections | 5.21 | **3.16** | 4.55 | 5.11 |
+| ms/episode, 64 sections | 60.7 | **26.5** | 31.7 | 179 |
+| 16 workers, episodes/s | 1682 | **3100** | 1926 | 540 |
+| 16 workers, total RSS MiB | 221 | **206** | 186 | 2298 |
+| whole process, 10×10 DEVStone ms | 286 | **181** | 179 | 557 |
+
+Real application (RLDEVSpy-TrackRailway, `downstream/trackrailway_bench.py`,
+random agent, 7200 s episodes, `results/trackrailway.jsonl`):
+
+| ms/episode | original (`0857ff6`) | flat kernel | **dict bags** |
+|---|---|---|---|
+| 1 train | 175 | 66 | **50** (3.5×) |
+| 5 trains | 333 | 141 | **109** (3.0×) |
+
+- DEVSpy is now **faster than PyPDEVS-minimal on every DEVStone shape and every
+  RL measure**, and 1.5–6.6× faster than a tuned, warm DEVSJAVA on DEVStone.
+- Since the start of this work: 4.6–26× on DEVStone and 3–3.5× on the real
+  TrackRailway environment.
+
+### What else could be optimized (measured or analysed)
+
+| Lever | Effect | Verdict |
+|---|---|---|
+| mypyc on the current kernel | 7–22% faster (best in RL: 3.18 → 2.48 ms/ep) | It still breaks `deep_cloning()` (the snapshot test fails), blinds profiling, and needs per-platform wheels. Worth it only as an *optional* compiled build with a pure-Python fallback, after adding `__deepcopy__` support. |
+| Disabling the GC during runs | 0–5%, within noise for RL | Not worth it. A library shouldn't touch the global GC. |
+| Inlining `_lambda`/`_delta` into `_round` | ~2–4% estimated (two calls per round) | Low priority. It would cost readability. |
+| Scheduler for dense models (array scan instead of heap) | Heap operations are ~10–13% on dense DEVStone | A sparse workload loses if we switch. Revisit only with an adaptive scheduler, as PyPDEVS does. |
+| PyPy | Not measured (not installed). DEVSpy is now pure Python with no dependencies, so it should be PyPy-friendly. | Measure next. It could be the largest remaining win, but RLDEVSpy's PyTorch/NumPy stack is CPython-only. |
+| CPython 3.13+ | Not measured (only 3.10/3.12 installed) | Free upgrade for users. |
+| **TrackRailway modelling** | Kernel ≈ 34% of a real episode. TrackRailway models ≈ 48%. Each train emits an event on every movement tick (~15.6k events/episode), and the observer processes every one. | The biggest remaining win is in the model, not the engine: emit only on section changes or arrivals and compute positions analytically. This change belongs in TrackRailway. |
+| `phase_is()` | 2.1M calls (4.6%) in TrackRailway | Use `self.phase == "x"` in hot model code. |
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:

@@ -39,7 +39,7 @@ DEVSpy/
 ├── docs/                # markdown docs (this folder)
 ├── examples/            # runnable example models
 ├── src/devspy/
-│   ├── modeling/        # Atomic, Digraph, Port, Content, Message, entities
+│   ├── modeling/        # Atomic, Digraph, Couprel, Bag (dict message bags)
 │   ├── simulation/      # AtomicSimulator, Coordinator, Time*, CoupledSimulator
 │   ├── util/            # logging shim
 │   ├── facade.py

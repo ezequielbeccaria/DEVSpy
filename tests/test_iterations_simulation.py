@@ -1,4 +1,4 @@
-from devspy import Atomic, Content, IntEnt, Message
+from devspy import Atomic, Bag
 from devspy.simulation.atomic_simulator import AtomicSimulator
 
 
@@ -16,10 +16,8 @@ class Ticker(Atomic):
         self.ticks += 1
         self.hold_in("active", 1.0)
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("tick", IntEnt(self.ticks + 1)))
-        return m
+    def out(self) -> Bag:
+        return {"tick": [self.ticks + 1]}
 
 
 def test_iteration_limited_simulation_runs_exact_count():
