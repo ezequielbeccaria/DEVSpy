@@ -30,6 +30,19 @@ and fails loudly on invalid models.
   outputs before δ. It used to apply δ without λ, so those outputs were lost.
   The root outputs of an injected round are shown, as in a normal round.
 
+### Added: driving and observing a simulation
+
+- `DevsSuiteFacade.advance(until, stop_on_output)`: run, and return the root
+  outputs as `(t, bag)` pairs instead of printing them.
+- `DevsSuiteFacade.inject(port, value, at=None)`: inject at an absolute time
+  (default: now). A confluent round if `at` is an event time.
+- `time` and `next_event_time` properties.
+- `Observer` with `on_output` and `on_transition`; `add_observer` and
+  `remove_observer`.
+- `snapshot()` / `restore()` on the facade and the simulators. Restoring
+  happens in place, and a snapshot can be restored repeatedly.
+- `inject_at(t, bag)` on the simulators, the absolute-time form of `sim_inject`.
+
 ### Performance
 
 - The coordinator rebuilds its event heap when stale entries pile up (more than

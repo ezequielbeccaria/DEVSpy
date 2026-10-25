@@ -11,6 +11,7 @@ from devspy.modeling.devs import Bag, DevsBase
 from devspy.modeling.digraph import Digraph
 from devspy.simulation.atomic_simulator import AtomicSimulator, _check_injection
 from devspy.simulation.coupled_simulator import CoupledSimulator, Fanout, Route
+from devspy.simulation.observer import deepcopy_keeping, model_state, set_model_state
 from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
@@ -50,7 +51,6 @@ class Coordinator(AtomicSimulator):
         self._receivers: list[CoupledSimulator] = []
         self._imminent_time: float = -INFINITY
         self._ext_fanout: dict[str, list[Fanout]] = {}
-        self._stop_sim_flag = False
         coupled.set_coordinator(self)
         if set_simulators:
             self._flatten()
@@ -183,13 +183,19 @@ class Coordinator(AtomicSimulator):
                 imminent.append(sim)
         return imminent
 
-    def _lambda(self, imminent: list[CoupledSimulator], receivers: list[CoupledSimulator]) -> None:
+    def _lambda(
+        self, time: float, imminent: list[CoupledSimulator], receivers: list[CoupledSimulator]
+    ) -> None:
         """Apply λ to the imminents and route their outputs (appends to `receivers`)."""
         root_out = self.output
+        observers = self.observers
         for sim in imminent:
             y = sim.my_model.out()
             if not y:
                 continue
+            if observers:
+                for obs in observers:
+                    obs.on_output(time, sim.my_model, y)
             fanout = sim.fanout
             for src_port, values in y.items():
                 groups = fanout.get(src_port)
@@ -220,6 +226,7 @@ class Coordinator(AtomicSimulator):
         heap = self._heap
         push = heappush
         inf = INFINITY
+        observers = self.observers
         for sim in affected:
             model = sim.my_model
             x_bag = sim.input
@@ -232,6 +239,10 @@ class Coordinator(AtomicSimulator):
                     model.deltext(time - sim.t_l, x_bag)
             else:
                 model.deltint()
+            if observers:
+                kind = ("con" if old_tn == time else "ext") if x_bag else "int"
+                for obs in observers:
+                    obs.on_transition(time, model, kind, time - sim.t_l, x_bag)
             sim.t_l = time
             tn = time + (model.sigma if sim.ta_is_sigma else model.ta())
             if tn == old_tn != time:
@@ -257,7 +268,8 @@ class Coordinator(AtomicSimulator):
         `self.output` for the caller to show."""
         imminent = self._pop(time)
         receivers: list[CoupledSimulator] = []
-        self._lambda(imminent, receivers)
+        self._out_t = time
+        self._lambda(time, imminent, receivers)
         self._delta(time, imminent, receivers)
         self.t_l = time
         self.t_n = self.next_tn()
@@ -265,7 +277,8 @@ class Coordinator(AtomicSimulator):
     def compute_input_output(self, time: float) -> None:
         self._imminent = self._pop(time)
         self._imminent_time = time
-        self._lambda(self._imminent, self._receivers)
+        self._out_t = time
+        self._lambda(time, self._imminent, self._receivers)
 
     def wrap_deltfunc(self, time: float, x: Optional[Bag] = None) -> None:
         if self._imminent_time != time:
@@ -343,9 +356,48 @@ class Coordinator(AtomicSimulator):
             t = self.t_n
         log(f"Terminated Normally at ITERATION {i} ,time: {self.t_n}", FULL)
 
-    def stop_simulation(self) -> None:
-        """Make the running loop return after the current round."""
-        self._stop_sim_flag = True
+    # --- snapshots ---------------------------------------------------------
+    def snapshot(self) -> dict:
+        """Copy of the simulation state (every atomic's attributes, the times and
+        the event heap), for `restore`. Model objects are not copied, and
+        references between models are kept as references."""
+        state = {
+            "models": [model_state(s.my_model) for s in self.simulators],
+            "sims": [(s.t_l, s.t_n, s.version, s.input) for s in self.simulators],
+            "heap": list(self._heap),
+            "times": (self.t_l, self.t_n),
+        }
+        return deepcopy_keeping(state, self._structure())
+
+    def restore(self, snapshot: dict) -> None:
+        """Put every model and simulator back in the state of `snapshot`, in
+        place. A snapshot can be restored any number of times."""
+        state = deepcopy_keeping(snapshot, self._structure())
+        for sim, ms, (t_l, t_n, version, inp) in zip(
+            self.simulators, state["models"], state["sims"]
+        ):
+            set_model_state(sim.my_model, ms)
+            sim.t_l, sim.t_n, sim.version, sim.input = t_l, t_n, version, inp
+        self._heap = state["heap"]
+        self.t_l, self.t_n = state["times"]
+        self._imminent = []
+        self._receivers = []
+        self._imminent_time = -INFINITY
+        self.input = {}
+        self.output = {}
+        self.initialized = True
+
+    def _structure(self) -> list:
+        """Objects a snapshot keeps by reference: models, digraphs, simulators."""
+        objs: list = [self, self.my_coupled, *self.simulators]
+        objs.extend(s.my_model for s in self.simulators)
+        stack = [self.my_coupled]
+        while stack:
+            for c in stack.pop().get_components():
+                if isinstance(c, Digraph):
+                    objs.append(c)
+                    stack.append(c)
+        return objs
 
     # --- state/output display ---------------------------------------------
     def show_model_state(self) -> None:
@@ -360,10 +412,15 @@ class Coordinator(AtomicSimulator):
         Raises `ValueError` unless `0 <= e <= t_n - t_l`, or if a port is undeclared.
         """
         bag = port_or_bag if isinstance(port_or_bag, dict) else {str(port_or_bag): [value]}
+        self.inject_at(self.t_l + e, bag)
+
+    def inject_at(self, t: float, bag: Bag) -> None:
+        """Inject `bag` on root input ports at absolute time `t`, `t_l <= t <= t_n`.
+        At `t == t_n` it is a confluent round: the imminents' λ runs first."""
         self.t_n = self.next_tn()
-        _check_injection(self, e, bag, self.my_coupled._inports)
+        _check_injection(self, t, bag, self.my_coupled._inports)
         self.input = {port: list(values) for port, values in bag.items()}
-        self.wrap_deltfunc(self.t_l + e)
+        self.wrap_deltfunc(t)
         self.show_model_state()
 
 
