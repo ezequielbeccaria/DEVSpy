@@ -47,13 +47,13 @@ class DevsSuiteFacade:
     def set_atomic_model(self, model: Atomic) -> None:
         self._coordinator = None
         self._atomic_simulator = TimeAtomicSimulator(model)
-        self._atomic_simulator.initialize(0.0)
+        self._atomic_simulator.initialize(0)
 
     def set_digraph_model(self, model: Digraph, initialize: bool = True) -> None:
         self._atomic_simulator = None
         self._coordinator = TimeCoordinator(model, set_simulators=True)
         if initialize:
-            self._coordinator.initialize(0.0)
+            self._coordinator.initialize(0)
 
     # --- running -----------------------------------------------------------
     def simulate_iterations(self, iterations: int) -> None:
@@ -92,10 +92,10 @@ class DevsSuiteFacade:
     def reset(self) -> None:
         self._require_sim()
         if self._atomic_simulator is not None:
-            self._atomic_simulator.initialize(0.0)
+            self._atomic_simulator.initialize(0)
         else:
             assert self._coordinator is not None
-            self._coordinator.initialize(0.0)
+            self._coordinator.initialize(0)
 
     # --- stepping ----------------------------------------------------------
     @property
@@ -129,7 +129,7 @@ class DevsSuiteFacade:
         """
         sim = self._require_sim()
         if not sim.initialized:
-            sim.initialize(0.0)
+            sim.initialize(0)
         t = sim.t_l if at is None else float(at)
         if t < sim.t_l:
             raise ValueError(f"cannot inject at {t}: the simulation is already at {sim.t_l}")

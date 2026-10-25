@@ -31,8 +31,9 @@ class AtomicSimulator:
     def __init__(self, model: Any = None) -> None:
         # Any, not IOBasicDevs: Coordinator passes its Digraph here.
         self.my_model: Any = model
-        self.t_l: float = 0.0
-        self.t_n: float = 0.0
+        # Times start as the int 0 so that int or Fraction time advances stay exact.
+        self.t_l: float = 0
+        self.t_n: float = 0
         self.input: Bag = {}
         self.output: Bag = {}
         self.initialized: bool = False
@@ -41,7 +42,7 @@ class AtomicSimulator:
         self._sink: Optional[list[tuple[float, Bag]]] = None
         self._stop_on_output = False
         self._stop_sim_flag = False
-        self._out_t = 0.0
+        self._out_t: float = 0
         # The default Atomic.show_state only logs; skip calling it when logging is off.
         self.custom_show_state: bool = _has_custom_show_state(model)
 
@@ -49,26 +50,11 @@ class AtomicSimulator:
     def next_tn(self) -> float:
         return self.t_n
 
-    def equal_tn(self, t: float) -> bool:
-        return t == self.t_n
-
-    def get_tn(self) -> float:
-        return self.t_n
-
-    def get_tl(self) -> float:
-        return self.t_l
-
-    def get_output(self) -> Bag:
-        return self.output
-
-    def get_input(self) -> Bag:
-        return self.input
-
     def get_model(self) -> Optional[IOBasicDevs]:
         return self.my_model
 
     # --- lifecycle ---------------------------------------------------------
-    def initialize(self, current_time: float = 0.0) -> None:
+    def initialize(self, current_time: float = 0) -> None:
         assert self.my_model is not None
         self.my_model.initialize()
         self.t_l = current_time
@@ -135,7 +121,7 @@ class AtomicSimulator:
     def _run(self, num_iter: float, max_time: float) -> None:
         """Run while `t_n <= max_time`, for at most `num_iter` iterations."""
         if not self.initialized:
-            self.initialize(0.0)
+            self.initialize(0)
         self._stop_sim_flag = False
         i = 1
         guard = _InstantGuard(self.max_rounds_per_instant)
