@@ -1,0 +1,6 @@
+{"engine": "devspy@fdb9757", "args": "1000 0.01 10 20", "result": "n=1000 wall=2360ms heap=999001 maxrss=144MiB"}
+{"engine": "devspy@fdb9757+heap", "args": "1000 0.01 10 20", "result": "n=1000 wall=1548ms heap=2001 maxrss=41MiB"}
+{"engine": "devspy@fdb9757", "args": "200 0.01 50 60", "result": "n=200 wall=1058ms heap=1000001 maxrss=143MiB"}
+{"engine": "devspy@fdb9757+heap", "args": "200 0.01 50 60", "result": "n=200 wall=771ms heap=201 maxrss=41MiB"}
+{"engine": "devspy@fdb9757", "args": "1000 0.01 1 20", "result": "n=1000 wall=2303ms heap=99001 maxrss=41MiB"}
+{"engine": "devspy@fdb9757+heap", "args": "1000 0.01 1 20", "result": "n=1000 wall=1536ms heap=2001 maxrss=41MiB"}

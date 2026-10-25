@@ -30,6 +30,13 @@ and fails loudly on invalid models.
   outputs before δ. It used to apply δ without λ, so those outputs were lost.
   The root outputs of an injected round are shown, as in a normal round.
 
+### Performance
+
+- The coordinator rebuilds its event heap when stale entries pile up (more than
+  `2·n + 64` entries), and a receiver whose next event time does not move keeps
+  its heap entry. Models whose inputs keep pushing timeouts later (watchdogs)
+  run 28–34% faster with bounded memory. Other workloads are unchanged.
+
 ### Added
 
 - `tests/reference_pdevs.py`: a literal PDEVS abstract simulator used as an

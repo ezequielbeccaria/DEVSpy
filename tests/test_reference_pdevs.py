@@ -117,11 +117,13 @@ def random_model(seed):
     return top, log
 
 
-def _run_devspy(seed, end):
+def _run_devspy(seed, end, heap_limit=None):
     model, log = random_model(seed)
     f = DevsSuiteFacade(model)
     f.reset()
     sim = f.get_simulator()
+    if heap_limit is not None:
+        sim._heap_limit = heap_limit
     outputs = []
     sim.show_output = lambda: outputs.append((sim.t_l, _multiset(sim.output)))
     f.simulate_to_time(end)
@@ -141,6 +143,16 @@ def test_kernel_matches_reference_abstract_simulator(seed):
     assert log == ref_log
     assert outputs == ref_outputs
     assert any(log.values())  # the model actually did something
+
+
+@pytest.mark.parametrize("seed", range(100))
+def test_kernel_matches_reference_with_eager_heap_rebuilds(seed):
+    # _heap_limit = 0 rebuilds the heap after every round (normally only once
+    # stale entries pile up, which these small models never reach).
+    log, outputs = _run_devspy(seed, 40.0, heap_limit=0)
+    ref_log, ref_outputs = _run_reference(seed, 40.0)
+    assert log == ref_log
+    assert outputs == ref_outputs
 
 
 def _with_root_input(model):

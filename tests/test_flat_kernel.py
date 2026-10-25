@@ -159,3 +159,20 @@ def test_sim_inject_at_an_event_time_runs_lambda_before_delta():
     f.get_simulator().sim_inject(1.0, "in", "x")
     assert rec.seen == [(1.0, 0)]
     assert ext.seen == [(1.0, "x")]
+
+
+def test_heap_stays_bounded_when_receivers_keep_rescheduling():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "benchmarks"))
+    from timeout_model import build
+
+    model = build(n=50, period=0.01, timeout=1.0)
+    f = DevsSuiteFacade(model)
+    f.reset()
+    f.simulate_to_time(3.0)
+    sim = f.get_simulator()
+    assert len(sim._heap) <= sim._heap_limit
+    # Pinged every 0.01 with a timeout of 1.0: no watchdog ever fires.
+    assert all(c.fired == 0 for c in model.get_components() if c.get_name() != "bcast")
