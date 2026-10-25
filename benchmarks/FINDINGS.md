@@ -457,6 +457,8 @@ it is breaking (see `CHANGELOG.md`), hence 0.3.0.
   end-to-end trajectory digest is unchanged, `ALL 11cc8d93d6e2c704`.
 - New `tests/test_robustness.py` (15 tests) covers each rule.
 
+> **Correction (iteration 13):** the before/after numbers in this paragraph were invalid, because both sides ran the same code. Corrected numbers are in iteration 13.
+
 ### Cost
 
 The guard adds one float comparison per round in `_run`. Measured against
@@ -534,6 +536,8 @@ is unchanged (`ALL 3e6ae84e413300cc`).
 Three cheap kernel levers from the "what else" list (A4, A5, A7), now guarded by
 the oracle.
 
+> **Correction (iteration 13):** the DEVStone/RL "no change" results below came from an invalid comparison, because both sides ran the same code. Measured correctly, this iteration makes RL **14–17% faster** and DEVStone 2–3% slower. A7 was re-measured correctly and is still within noise. See iteration 13. The watchdog and TrackRailway numbers were valid.
+
 | Lever | Change | Result | Kept? |
 |---|---|---|---|
 | A4: heap compaction | Rebuild the heap (`heapify` of the live `(t_n, index, version)`) when it grows past `2·n + 64` entries | DEVStone, RL and TrackRailway: no change (their heaps never fill with stale entries; TrackRailway peaks at 28). **Watchdog pattern: 28–34% faster, heap bounded, RSS 144 → 41 MiB** | Yes |
@@ -608,6 +612,8 @@ API work (C1–C3), no performance goal.
 - 11 unit tests in `tests/test_step_api.py`.
 - The mutation check still catches all 11 mutations.
 
+> **Correction (iteration 13):** the before/after numbers in this paragraph were invalid, because both sides ran the same code. Corrected numbers are in iteration 13.
+
 **Cost** with no observer attached is one emptiness check per output and per
 transition. Against `22780c0` the difference is within noise: DEVStone 20×20
 328.5 → 333.2 ms on one sample, other shapes ±1%; RL m=64 22.74/23.14 →
@@ -668,6 +674,8 @@ the oracle rejects that variant.
   - removal keeping couplings.
 - `trace_diff.py --model-level`, the TrackRailway trajectories, RLDEVSpy and
   TrackRailway tests are all unchanged.
+
+> **Correction (iteration 13):** the before/after numbers in this paragraph were invalid, because both sides ran the same code. Corrected numbers are in iteration 13.
 
 **Cost**: one attribute check per round. Against `faab105` the difference is
 within noise on DEVStone (±1.5%) and RL.
@@ -826,6 +834,148 @@ kept executing the mutated `.pyc`.
   re-measured after clearing `__pycache__`.
 - `mutation_check.py` now runs its pytest subprocesses with
   `PYTHONDONTWRITEBYTECODE=1` and deletes the `.pyc` of every file it restores.
+
+## Iteration 13: interpreters, measurement corrections, scheduler fix (branch `bench/interpreters`)
+
+### A measurement error, and the corrected numbers
+
+`run_devstone.py` and `run_rl.py` take `devspy=<repo root>` and add `src/`
+themselves. In iterations 5, 7, 8 and 9, the before/after comparisons passed
+`devspy=<worktree>/src`. The resulting `PYTHONPATH` pointed nowhere, so both
+sides imported the installed devspy, which is the current tree, while the
+label showed the base commit. **Those comparisons measured the same code
+twice.** The runners now refuse any path that is not a repo root containing
+`src/devspy/`.
+
+Unaffected measurements:
+
+- The watchdog and TrackRailway comparisons, which set `PYTHONPATH` directly.
+- The scheduler comparison, which runs all modes in one process.
+- A8, which edited the tree in place.
+
+Every PR from #5 to #13 was re-measured from its own worktree in one session.
+The final row (#15) was taken separately. Data is in `results/devstone.jsonl`
+(tags `chain-remeasure` and `final-it13`) and `results/rl.jsonl`.
+
+| PR | commit | DS 20×20 | DS 3×50 | DS 200×1 | RL m=8 ms/ep | RL m=64 ms/ep | RL P=16 eps/s |
+|---|---|---|---|---|---|---|---|
+| #5 dict bags | 23c78d0 | 312.2 | 86.4 | 319.3 | 3.16 | 26.71 | 2923 |
+| #6 robustness | 4fd9a45 | 310.4 | 85.1 | 322.3 | 3.24 | 27.05 | 2907 |
+| #7 oracle | fdb9757 | 314.7 | 84.6 | 319.8 | 3.25 | 26.92 | 2796 |
+| #8 heap hygiene | 22780c0 | 323.1 | 87.7 | 327.1 | **2.80** | **22.22** | 3200 |
+| #9 step API/observers | faab105 | 328.0 | 90.3 | 339.2 | 2.88 | 22.69 | 3280 |
+| #10 variable structure | 1d1df69 | 326.5 | 89.1 | 339.2 | 2.91 | 22.96 | 3168 |
+| #11 real time | f70ca94 | 329.1 | 90.6 | 335.8 | 2.89 | 22.57 | 3227 |
+| #12 exact time | 91bcb6f | 323.4 | 89.7 | 341.4 | 2.94 | 22.66 | 3241 |
+| #13 adaptive scheduler | 0a3ed23 | **274.8** | **77.6** | **283.5** | 3.10 | 22.52 | 3123 |
+| #15 scheduler fix | 4f5e375 | 277.6 | 77.5 | 285.8 | 2.95 | 22.72 | 3071 |
+
+What changes against the earlier claims:
+
+- **#8 heap hygiene makes RL 14–17% faster.** It had been reported as "no
+  change". RL resets every episode, and receivers rescheduled within an
+  episode leave stale heap entries. The cost is 2–3% on DEVStone.
+- **#9 observers cost 1.5–3.7%** on DEVStone and RL. That is one emptiness
+  check per output and transition, plus extra locals. It is acceptable for
+  the feature, but it is not "within noise" as reported.
+- **#6, #7, #10, #11 and #12 are within noise**, so those claims hold now that
+  they are measured properly.
+- **#13 had a real regression of +4–6% on RL m=8**, found here. It is fixed in
+  #15; see below.
+- **Overall, #5 → #15:** DEVStone is 11–12% faster, RL m=8 7% faster, RL
+  m=64 15% faster, and RL P=16 throughput 5% higher. All of this comes on top
+  of the new features.
+- **A7 re-measured** as a variant of the final tree, passing the full oracle,
+  with 5 interleaved runs: RL m=8 −0.5%, DEVStone 20×20 +0.6%, 200×1 +0.4%.
+  Rejecting it stands.
+
+### Scheduler fix (#15)
+
+The rule `n < 4.5·k + 8` always picked the scan for networks under about 10
+models. For small sparse networks the heap wins: at n = 9 its operations
+cost almost nothing. On top of that, the per-round accounting sat on the hot
+path. The fix has three parts:
+
+- **Rule:** scan when n / (k · log2 n) < 0.38, and back to the heap above
+  0.46. The heap costs about k·log2 n per round and the scan about n.
+- **Measured data:**
+
+  | Case | Ratio | Better mode |
+  |---|---|---|
+  | DEVStone | 0.12 | scan |
+  | Watchdog | 0.10 | scan |
+  | RL m=64 | 0.33 | scan, by 2% |
+  | RL m=8 | 0.50 | heap |
+  | Sparse n=64 | 10.7 | heap |
+
+- **No per-round cost:**
+  - `next_tn` and `_pop` are bound per mode, so the hot path has no mode
+    branch.
+  - The round counter is a local in `_rounds`.
+  - k comes from the growth of the simulators' version sum, since each
+    reschedule bumps exactly one version.
+  - Choices are made after 61, 122, 244, … rounds, capped at 8192, so the
+    O(n) sum is amortized even for n = 4096. A first attempt that sampled a
+    single round per period was too noisy for RL m=8.
+  - The baseline restarts on `initialize`, `restore` and every restructure.
+
+`scheduler_bench.py` results after the fix (`results/scheduler.jsonl`):
+
+| Case | heap | scan | auto |
+|---|---|---|---|
+| DEVStone 20×20 | 325.5 | 269.5 | 271.5 |
+| DEVStone 3×50 | 89.2 | 77.0 | 78.3 |
+| DEVStone 200×1 | 339.8 | 288.1 | 288.4 |
+| RL m=8 | 578.2 | 593.9 | 585.9 |
+| RL m=64 | 626.3 | 614.8 | 626.0 |
+| Watchdog | 405.3 | 318.0 | 334.9 |
+| Sparse n=1024 | 29.5 | 995.9 | 30.1 |
+| Sparse n=4096 | 31.2 | 4061.0 | 32.5 |
+
+Process-separated comparisons against #12, interleaved:
+
+| Workload | #12 | #15 | Change |
+|---|---|---|---|
+| RL m=8 (5 runs) | 2.925 | 2.944 | +0.6% |
+| DEVStone 20×20 (5 runs) | 327.0 | 273.1 | −16.5% |
+| TrackRailway, 5 trains (6 runs, mean) | 108.7 | 108.8 | 0% |
+
+The oracle (heap, scan, flip), the 19 mutations, the trace digest and the
+TrackRailway trajectory digest are all unchanged.
+
+### Interpreters (A1, A2)
+
+The same code (`8872fd0`, before the #15 fix) was run under four
+interpreters: CPython 3.12 (reference) and PyPy 3.11 v7.3.22 from
+downloads.python.org, and CPython 3.13.15 and 3.14.7 from python-build-standalone
+20260924. Checksums were verified for all of them. Counters (transitions,
+decisions, rewards) are identical across interpreters. Rows carry
+`"python"`, and their labels end in `[cpython3.13]`, `[cpython3.14]` or
+`[pypy3.11]`.
+
+| | CPython 3.12 | CPython 3.13 | CPython 3.14 | PyPy 3.11 |
+|---|---|---|---|---|
+| DEVStone 5×3 (ms) | 22.4 | 22.9 | 19.5 | 13.5 |
+| DEVStone 10×10 | 135.2 | 132.1 | 105.5 | 42.8 |
+| DEVStone 200×1 | 286.4 | 279.3 | 221.8 | 84.7 |
+| DEVStone 3×50 | 77.8 | 78.5 | 61.9 | 27.5 |
+| DEVStone 20×20 | 275.4 | 276.7 | 217.4 | 93.1 (warm 88.8) |
+| RL m=8 ms/ep (first episode) | 3.04 (3.3) | 2.87 (3.2) | 2.61 (2.9) | **0.76 (27.4)** |
+| RL m=64 ms/ep (first episode) | 22.39 (22.8) | 22.70 (23.0) | 18.62 (18.9) | **5.62 (62.7)** |
+| RL single-process RSS | 13 MiB | 15 MiB | 17 MiB | 72–93 MiB |
+| RL P=16 eps/s (total RSS) | 2994 (208 MiB) | 3246 (240 MiB) | 3376 (267 MiB) | 2977 (1246 MiB) |
+
+- **CPython 3.13** performs the same as 3.12.
+- **CPython 3.14** is 14–21% faster for free, so it is the recommended
+  version.
+- **PyPy** is 3–4× faster in steady state, which puts DEVSpy within
+  1.1–1.7× of adevs (C++) on DEVStone: 93 vs 70 ms on 20×20, 27.5 vs 25 on 3×50.
+  Cadmium is still 4–6× faster than that. It pays for that with JIT warmup (first
+  episode 9× slower), 6–7× the memory, and no gain with 16 short-lived
+  workers.
+- PyPy suits long single-process simulations of models written in pure
+  Python. RLDEVSpy and TrackRailway need PyTorch and NumPy, which PyPy can't
+  run, so this doesn't apply to them.
 
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 

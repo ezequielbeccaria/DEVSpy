@@ -26,11 +26,26 @@ JAVA = os.environ.get("JAVA", "/usr/lib/jvm/jdk-17/bin/java")
 JAVA_OPTS = os.environ.get("JAVA_OPTS", "").split()
 # Other Python engines run in their own interpreter/venv (see other_python/).
 OTHERS_PY = os.environ.get("OTHERS_PY", sys.executable)
+# Interpreter running DEVSpy (sys.executable); labels note it unless it is the
+# reference CPython 3.12 that all earlier results used.
+PY = f"{sys.implementation.name}{sys.version_info.major}.{sys.version_info.minor}"
+PY_SUFFIX = "" if PY == "cpython3.12" else f"[{PY}]"
 PYPDEVS_PATH = os.environ.get("PYPDEVS_PATH", "")
 OTHER_ENGINES = ("xdevs", "xdevs-flat", "pypdevs-minimal")
 CPP_BIN = os.environ.get("CPP_BIN", os.path.join(HERE, "cpp", "bin"))
 CPP_ENGINES = ("adevs", "cadmium")
 JAVA_LABEL = "devsjava" + (f"[{' '.join(JAVA_OPTS)}]" if JAVA_OPTS else "")
+
+
+def devspy_path(src):
+    """PYTHONPATH entry for a DEVSpy checkout given as `devspy=<repo root>`.
+
+    Refuses anything else: a wrong path would silently fall back to the
+    installed devspy, and both sides of a comparison would run the same code."""
+    path = os.path.join(src, "src")
+    if not os.path.isfile(os.path.join(path, "devspy", "__init__.py")):
+        raise SystemExit(f"devspy={src}: expected a DEVSpy repo root containing src/devspy/")
+    return path
 
 
 def devspy_label(src):
@@ -64,7 +79,7 @@ def run_one(engine, src, cfg, reps):
     else:
         cmd = [sys.executable, os.path.join(HERE, "devstone.py"), *args]
         if src:
-            env["PYTHONPATH"] = os.path.join(src, "src")
+            env["PYTHONPATH"] = devspy_path(src)
     out = subprocess.check_output(cmd, env=env, text=True)
     return json.loads(out.strip().splitlines()[-1])
 
@@ -85,10 +100,11 @@ def main():
         for spec in a.engines:
             engine, _, src = spec.partition("=")
             label = (JAVA_LABEL if engine == "devsjava"
-                     else engine if engine in OTHER_ENGINES + CPP_ENGINES else devspy_label(src))
+                     else engine if engine in OTHER_ENGINES + CPP_ENGINES
+                     else devspy_label(src) + PY_SUFFIX)
             for cfg in CONFIGS:
                 r = run_one(engine, src, cfg, a.reps)
-                r.update(meta, label=label)
+                r.update(meta, label=label, python=PY)
                 # JIT engines: first rep is cold; report warm median separately
                 sims = r["sim_ms"]
                 r["sim_ms_median"] = statistics.median(sims)
