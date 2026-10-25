@@ -76,7 +76,9 @@ def _instrument_models():
                 return d_int(self)
 
             def deltext(self, e, x):
-                TRACE.append(f"{self.get_name()} ext e={e:.9g} x={_bag(x)}")
+                sim = self.get_simulator()
+                t = sim.t_l + e if sim is not None else float("nan")
+                TRACE.append(f"{t:.9g} {self.get_name()} ext e={e:.9g} x={_bag(x)}")
                 return d_ext(self, e, x)
 
             def deltcon(self, e, x):

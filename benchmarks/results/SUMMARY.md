@@ -1,12 +1,12 @@
 ## DEVStone-like: simulation wall clock (ms, warm median)
 
-| config | transitions | devspy@eb23a82 | devspy@0857ff6 | devspy[devspy-mypyc] | devsjava | xdevs | xdevs-flat | pypdevs-minimal | adevs | cadmium | devsjava[-XX:+UseSerialGC -Xmx128m] |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| 5x3, 1000 ev | 28000 | 112 | 154 | 98 | 120 | 99 | 65 | 28 | 3 | 1 | 61 |
-| 10x10, 1000 ev | 184000 | 642 | 996 | 608 | 370 | 616 | 381 | 154 | 25 | 7 | 307 |
-| 200x1, 1000 ev | 402000 | 1033 | 1480 | 966 | 547 | 882 | 863 | 333 | 53 | 12 | 492 |
-| 3x50, 500 ev | 102000 | 1603 | 2223 | 1579 | 657 | 807 | 231 | 90 | 25 | 6 | 567 |
-| 20x20, 500 ev | 382000 | 1238 | 2011 | 1159 | 687 | 1475 | 803 | 325 | 70 | 15 | 583 | 
+| config | transitions | devspy@eb23a82 | devspy@0857ff6 | devspy[devspy-mypyc] | devsjava | xdevs | xdevs-flat | pypdevs-minimal | adevs | cadmium | devsjava[-XX:+UseSerialGC -Xmx128m] | devspy@6aa16ed |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 5x3, 1000 ev | 28000 | 112 | 154 | 98 | 120 | 99 | 65 | 28 | 3 | 1 | 61 | 38 |
+| 10x10, 1000 ev | 184000 | 642 | 996 | 608 | 370 | 616 | 381 | 154 | 25 | 7 | 307 | 248 |
+| 200x1, 1000 ev | 402000 | 1033 | 1480 | 966 | 547 | 882 | 863 | 333 | 53 | 12 | 492 | 532 |
+| 3x50, 500 ev | 102000 | 1603 | 2223 | 1579 | 657 | 807 | 231 | 90 | 25 | 6 | 567 | 145 |
+| 20x20, 500 ev | 382000 | 1238 | 2011 | 1159 | 687 | 1475 | 803 | 325 | 70 | 15 | 583 | 515 | 
 
 ## End-to-end process (startup + build + run)
 
@@ -27,7 +27,9 @@
 | cadmium | 5x3, 100 ev | 2 | 3.8 |
 | cadmium | 10x10, 1000 ev | 8 | 3.9 |
 | devsjava[-XX:+UseSerialGC -Xmx128m] | 5x3, 100 ev | 133 | 79.4 |
-| devsjava[-XX:+UseSerialGC -Xmx128m] | 10x10, 1000 ev | 557 | 150.0 | 
+| devsjava[-XX:+UseSerialGC -Xmx128m] | 10x10, 1000 ev | 557 | 150.0 |
+| devspy@6aa16ed | 5x3, 100 ev | 41 | 14.0 |
+| devspy@6aa16ed | 10x10, 1000 ev | 286 | 14.1 | 
 
 ## RL-style: single worker
 
@@ -56,7 +58,10 @@
 | cadmium | 64 | 100 | 204 | 1.96 | 2.0 | 4 | 284721 | 512275 |
 | devsjava[-XX:+UseSerialGC -Xmx128m] | 8 | 20 | 344 | 9.97 | 48.6 | 156 | 7107 | 12823 |
 | devsjava[-XX:+UseSerialGC -Xmx128m] | 8 | 500 | 2771 | 5.11 | 48.7 | 138 | 177978 | 320362 |
-| devsjava[-XX:+UseSerialGC -Xmx128m] | 64 | 100 | 18076 | 178.88 | 280.6 | 126 | 284721 | 512275 | 
+| devsjava[-XX:+UseSerialGC -Xmx128m] | 64 | 100 | 18076 | 178.88 | 280.6 | 126 | 284721 | 512275 |
+| devspy@6aa16ed | 8 | 20 | 143 | 5.26 | 5.6 | 14 | 7107 | 12823 |
+| devspy@6aa16ed | 8 | 500 | 2647 | 5.21 | 5.7 | 14 | 177978 | 320362 |
+| devspy@6aa16ed | 64 | 100 | 6115 | 60.70 | 61.9 | 14 | 284721 | 512275 | 
 
 ## RL-style: parallel workers (8 sections, 200 episodes/worker)
 
@@ -94,3 +99,7 @@
 | devsjava[-XX:+UseSerialGC -Xmx128m] | 4 | 1974 | 405 | 594 |
 | devsjava[-XX:+UseSerialGC -Xmx128m] | 8 | 3087 | 518 | 1128 |
 | devsjava[-XX:+UseSerialGC -Xmx128m] | 16 | 5924 | 540 | 2298 |
+| devspy@6aa16ed | 1 | 1079 | 185 | 14 |
+| devspy@6aa16ed | 4 | 1120 | 715 | 55 |
+| devspy@6aa16ed | 8 | 1213 | 1319 | 111 |
+| devspy@6aa16ed | 16 | 1903 | 1682 | 221 |
