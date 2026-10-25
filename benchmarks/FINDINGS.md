@@ -466,6 +466,69 @@ The guard adds one float comparison per round in `_run`. Measured against
 27.1 → 26.6–26.8 ms/ep; P=16 2869 → 2861 eps/s. Decisions and rewards are
 identical.
 
+## Iteration 6: reference abstract simulator as a permanent oracle (branch `test/reference-simulator`)
+
+Until now every engine change was validated with a manual trace diff between
+two versions of DEVSpy. That shows a change preserves behaviour, not that the
+behaviour is PDEVS. `tests/reference_pdevs.py` is an independent, literal
+implementation of Chow & Zeigler's hierarchical abstract simulator: one
+coordinator per digraph, no flattening, no heap, couplings translated level by
+level at every round. `tests/test_reference_pdevs.py` runs both engines on
+random hierarchical models with these properties:
+
+- Depth up to 3, with 1–2 input and output ports per atomic.
+- Fan-in and fan-out through EIC, IC and EOC.
+- Delays in {0, 0.5, 1, 2, 3}, which produce ties and zero-time advances.
+- Half the atomics override `deltcon` and half use the default; half use `cont(e)`.
+
+The suite runs 300 models without input and 150 with random external
+injections. The injections fall on a 0.25 grid, so many coincide with internal
+events.
+
+Over the 300 models without input there are 28,526 transitions:
+
+| Measure | Count |
+|---|---|
+| External transitions | 14,415 |
+| Internal transitions | 12,695 |
+| Custom confluent transitions | 1,416 |
+| Transitions with `e = 0` | 4,427 |
+| Multi-value bags | 2,365 |
+| Root outputs | 3,342 |
+
+Each atomic logs its own view of every transition (clock, kind, e, and the
+input bag as a multiset), and the comparison is per model. That is exactly what
+PDEVS determines: simultaneous transitions of different models commute, and a
+bag has no order. The whole suite takes about one second.
+
+**Is the oracle sensitive?** `benchmarks/mutation_check.py` injects known kernel
+bugs one at a time, and **all 9 are caught**:
+
+- confluent dispatched as `deltext`;
+- the old default-`deltcon` `e`;
+- receivers left without δ;
+- stale heap entries used;
+- `e` measured from `t_n`;
+- only the first value per port delivered;
+- a wrong `ta()` on one model;
+- an injection without λ;
+- root output dropped.
+
+The oracle itself is also checked against the hand-derived GPT trace.
+
+**Bug found.** `sim_inject` at exactly `t_n` applied δ to the imminent models
+without running their λ first: an (x, t) at t = tN with no preceding (*, t), so
+their outputs at that instant were lost. On 0.3.0 as published in #6, 50 of the
+150 injection cases fail. The fix:
+
+- `Coordinator.wrap_deltfunc` now runs λ and routing first whenever it is not
+  preceded by `compute_input_output(t)`.
+- `AtomicSimulator.sim_inject` does the same.
+- The root outputs of the injected round are shown after the round, as in `_run`.
+
+Neither TrackRailway nor RLDEVSpy injects, and `trace_diff.py --model-level`
+is unchanged (`ALL 3e6ae84e413300cc`).
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:

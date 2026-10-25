@@ -252,11 +252,11 @@ class Coordinator(AtomicSimulator):
         self._lambda(self._imminent, self._receivers)
 
     def wrap_deltfunc(self, time: float, x: Optional[Bag] = None) -> None:
-        self._send_down_messages()
         if self._imminent_time != time:
-            # δ without a preceding λ (sim_inject at an event time): the
-            # imminents still take their internal/confluent transition.
-            self._imminent = self._pop(time)
+            # (x, t) with no preceding (*, t), e.g. sim_inject. At t == t_n the
+            # imminents' λ must still run and be routed before their δ.
+            self.compute_input_output(time)
+        self._send_down_messages()
         self._delta(time, self._imminent, self._receivers)
         self._imminent = []
         self._receivers = []
@@ -264,7 +264,9 @@ class Coordinator(AtomicSimulator):
         self.t_l = time
         self.t_n = self.next_tn()
         self.input = {}
-        self.output = {}
+        if self.output:  # root outputs of this round, shown after it as in _run
+            self.show_output()
+            self.output = {}
 
     def delt_func(self, t: float) -> None:
         self.wrap_deltfunc(t)
