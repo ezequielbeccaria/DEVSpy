@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from heapq import heappop, heappush
+from heapq import heapify, heappop, heappush
 from operator import attrgetter
 from typing import Optional
 
@@ -44,6 +44,8 @@ class Coordinator(AtomicSimulator):
         self.custom_show_state: bool = False
         # (t_n, simulator index, simulator version); stale entries are skipped lazily.
         self._heap: list[tuple[float, int, int]] = []
+        # Rebuild the heap when stale entries make it this long (set in _flatten).
+        self._heap_limit = 64
         self._imminent: list[CoupledSimulator] = []
         self._receivers: list[CoupledSimulator] = []
         self._imminent_time: float = -INFINITY
@@ -101,6 +103,7 @@ class Coordinator(AtomicSimulator):
                     )
             sim.fanout = {port: _group(routes) for port, routes in sim.routes.items()}
         self.custom_show_state = any(sim.custom_show_state for sim in self.simulators)
+        self._heap_limit = 2 * len(self.simulators) + 64
 
     def _resolve(self, g: Digraph, name: str, port: str, out: list[Route]) -> None:
         """Follow a coupling destination `(name, port)` inside digraph `g` down/up to
@@ -220,9 +223,10 @@ class Coordinator(AtomicSimulator):
         for sim in affected:
             model = sim.my_model
             x_bag = sim.input
+            old_tn = sim.t_n
             if x_bag:
                 sim.input = {}
-                if sim.t_n == time:
+                if old_tn == time:
                     model.deltcon(time - sim.t_l, x_bag)
                 else:
                     model.deltext(time - sim.t_l, x_bag)
@@ -230,11 +234,23 @@ class Coordinator(AtomicSimulator):
                 model.deltint()
             sim.t_l = time
             tn = time + (model.sigma if sim.ta_is_sigma else model.ta())
+            if tn == old_tn != time:
+                # A receiver whose next event did not move: its heap entry
+                # (old_tn, index, version) is still valid.
+                continue
             sim.t_n = tn
             version = sim.version + 1
             sim.version = version
             if tn < inf:
                 push(heap, (tn, sim.index, version))
+        if len(heap) > self._heap_limit:
+            self._rebuild_heap()
+
+    def _rebuild_heap(self) -> None:
+        """Drop the stale entries left behind by rescheduled receivers."""
+        heap = [(s.t_n, s.index, s.version) for s in self.simulators if s.t_n < INFINITY]
+        heapify(heap)
+        self._heap = heap
 
     def _round(self, time: float) -> None:
         """One full PDEVS round at `time` (λ, routing, δ); root outputs stay in
