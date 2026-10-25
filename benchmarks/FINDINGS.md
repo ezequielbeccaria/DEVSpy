@@ -968,8 +968,9 @@ decisions, rewards) are identical across interpreters. Rows carry
 - **CPython 3.13** performs the same as 3.12.
 - **CPython 3.14** is 14–21% faster for free, so it is the recommended
   version.
-- **PyPy** is 3–4× faster in steady state, which puts DEVSpy at roughly
-  2–3× adevs' times on DEVStone. It pays for that with JIT warmup (first
+- **PyPy** is 3–4× faster in steady state, which puts DEVSpy within
+  1.1–1.7× of adevs (C++) on DEVStone: 93 vs 70 ms on 20×20, 27.5 vs 25 on 3×50.
+  Cadmium is still 4–6× faster than that. It pays for that with JIT warmup (first
   episode 9× slower), 6–7× the memory, and no gain with 16 short-lived
   workers.
 - PyPy suits long single-process simulations of models written in pure
