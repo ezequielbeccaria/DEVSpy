@@ -2,18 +2,12 @@ from devspy.exceptions import NoModelSetError
 from devspy.facade import DevsSuiteFacade
 from devspy.modeling import (
     Atomic,
-    Content,
+    Bag,
     Coupled,
     Couprel,
     DevsBase,
     Digraph,
-    DoubleEnt,
-    Entity,
-    IntEnt,
     IOBasicDevs,
-    Message,
-    Pair,
-    Port,
 )
 from devspy.simulation import (
     AtomicSimulator,
@@ -26,7 +20,7 @@ from devspy.simulation import (
 __all__ = [
     "Atomic",
     "AtomicSimulator",
-    "Content",
+    "Bag",
     "Coordinator",
     "Coupled",
     "CoupledSimulator",
@@ -34,15 +28,9 @@ __all__ = [
     "DevsBase",
     "DevsSuiteFacade",
     "Digraph",
-    "DoubleEnt",
-    "Entity",
-    "IntEnt",
     "IOBasicDevs",
-    "Message",
     "NoModelSetError",
-    "Pair",
-    "Port",
     "TimeAtomicSimulator",
     "TimeCoordinator",
 ]
-__version__ = "0.1.0"
+__version__ = "0.2.0"

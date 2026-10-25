@@ -8,7 +8,7 @@ RL agent embedded in the DEVS model does in RLDEVSpy. Everything is integer and
 seeded with the same LCG as the Java port, so `reward`/`decisions` must match
 across engines exactly.
 """
-from devspy import Atomic, Content, Digraph, IntEnt, Message
+from devspy import Atomic, Digraph
 
 SEED = {"episode": 0}
 STATS = {"decisions": 0, "reward": 0}
@@ -42,18 +42,14 @@ class Section(Atomic):
             self._travel()
 
     def deltext(self, e, x):
-        for c in x:
-            v = int(c.get_value())
+        for v in x.get("act", ()):
             if v // 10 == self.idx and self.phase_is("wait"):
                 self.hold_in("dwell", v % 10)
                 return
         self.cont(e)
 
     def out(self):
-        m = Message()
-        if self.phase_is("travel"):
-            m.add(Content("obs", IntEnt(self.idx * 1000 + self.last)))
-        return m
+        return {"obs": [self.idx * 1000 + self.last]} if self.phase_is("travel") else {}
 
 
 class Agent(Atomic):
@@ -68,7 +64,7 @@ class Agent(Atomic):
         self.passivate()
 
     def deltext(self, e, x):
-        obs = sorted(int(c.get_value()) for c in x)
+        obs = sorted(x.get("obs", ()))
         for o in obs:
             idx, travel = divmod(o, 1000)
             STATS["reward"] += 3 - abs(travel - 3)
@@ -83,10 +79,7 @@ class Agent(Atomic):
         self.passivate()
 
     def out(self):
-        m = Message()
-        for a in self.pending:
-            m.add(Content("act", IntEnt(a)))
-        return m
+        return {"act": list(self.pending)} if self.pending else {}
 
 
 def build(sections):

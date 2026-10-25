@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import math
 
-from devspy.modeling.devs import IOBasicDevs
-from devspy.modeling.message import Message
+from devspy.modeling.devs import Bag, IOBasicDevs
 from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
@@ -43,10 +42,12 @@ class Atomic(IOBasicDevs):
         self.sigma = sigma
 
     def passivate_in(self, phase: str) -> None:
-        self.hold_in(phase, INFINITY)
+        self.phase = phase
+        self.sigma = INFINITY
 
     def passivate(self) -> None:
-        self.passivate_in("passive")
+        self.phase = "passive"
+        self.sigma = INFINITY
 
     def cont(self, e: float) -> None:
         """Continue: decrement sigma by elapsed time e (was `Continue` in Java)."""
@@ -60,17 +61,17 @@ class Atomic(IOBasicDevs):
     def deltint(self) -> None:
         """Internal transition. Override in subclasses."""
 
-    def deltext(self, e: float, x: Message) -> None:
-        """External transition. Override in subclasses."""
+    def deltext(self, e: float, x: Bag) -> None:
+        """External transition. `x` maps input port -> values received. Override."""
 
-    def deltcon(self, e: float, x: Message) -> None:
+    def deltcon(self, e: float, x: Bag) -> None:
         """Confluent transition. DEVSJAVA default: deltint then deltext."""
         self.deltint()
         self.deltext(e, x)
 
-    def out(self) -> Message:
-        """Output function. Override to emit messages."""
-        return Message()
+    def out(self) -> Bag:
+        """Output function: return {port: [values]} ({} for no output). Override."""
+        return {}
 
     # --- introspection -----------------------------------------------------
     def __str__(self) -> str:

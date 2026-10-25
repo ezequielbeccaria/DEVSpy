@@ -1,0 +1,7 @@
+{"label": "devspy@0857ff6 (original) + RLDEVSpy/TrackRailway main", "trains": 1, "episodes": 40, "simulation_time": 7200.0, "ep_ms_median": 174.58, "date": "2026-10-24"}
+{"label": "devspy@2048cd1 (flat kernel) + main", "trains": 1, "episodes": 40, "simulation_time": 7200.0, "ep_ms_median": 66.41, "date": "2026-10-24"}
+{"label": "devspy@119019b (dict bags) + migrated", "trains": 1, "episodes": 40, "simulation_time": 7200.0, "ep_ms_median": 49.99, "date": "2026-10-24"}
+{"label": "devspy@0857ff6 (original) + RLDEVSpy/TrackRailway main", "trains": 5, "episodes": 40, "simulation_time": 7200.0, "ep_ms_median": 333.44, "date": "2026-10-24"}
+{"label": "devspy@2048cd1 (flat kernel) + main", "trains": 5, "episodes": 40, "simulation_time": 7200.0, "ep_ms_median": 140.68, "date": "2026-10-24"}
+{"label": "devspy@119019b (dict bags) + migrated", "trains": 5, "episodes": 40, "simulation_time": 7200.0, "ep_ms_median": 109.48, "date": "2026-10-24"}
+{"label": "e2e trace (trackrailway_trace.py)", "configs": "trains 1,3,5 x seeds 0..2 x 3 episodes", "old_stack": "ALL 11cc8d93d6e2c704", "new_stack": "ALL 11cc8d93d6e2c704", "identical": true, "date": "2026-10-24"}

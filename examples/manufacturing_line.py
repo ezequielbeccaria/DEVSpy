@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from devspy import Atomic, Content, DevsSuiteFacade, Digraph, IntEnt, Message
+from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
 
 
 @dataclass
@@ -51,10 +51,8 @@ class PartGenerator(Atomic):
         self._next_id += 1
         self.hold_in("emit", self._iat)
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("out", Part(self._next_id + 1, self._clock + self.sigma)))
-        return m
+    def out(self) -> Bag:
+        return {"out": [Part(self._next_id + 1, self._clock + self.sigma)]}
 
 
 class Buffer(Atomic):
@@ -75,21 +73,19 @@ class Buffer(Atomic):
         self.max_size = 0
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
-        for c in x:
-            port = c.get_port_name()
-            if port == "arrive":
-                part = c.get_value()
-                if not self._machine_busy and self._pending is None:
-                    self._pending = part
-                    self._machine_busy = True
-                else:
-                    self._buffer.append(part)
-            elif port == "next":
-                if self._buffer:
-                    self._pending = self._buffer.popleft()
-                else:
-                    self._machine_busy = False
+    def deltext(self, e: float, x: Bag) -> None:
+        # Arrivals first, then the server's "next" signal (fixed, documented order).
+        for part in x.get("arrive", ()):
+            if not self._machine_busy and self._pending is None:
+                self._pending = part
+                self._machine_busy = True
+            else:
+                self._buffer.append(part)
+        for _ in x.get("next", ()):
+            if self._buffer:
+                self._pending = self._buffer.popleft()
+            else:
+                self._machine_busy = False
         self.max_size = max(self.max_size, len(self._buffer))
         if self._pending is not None:
             self.hold_in("send", 0.0)
@@ -100,11 +96,8 @@ class Buffer(Atomic):
         self._pending = None
         self.passivate()
 
-    def out(self) -> Message:
-        m = Message()
-        if self._pending is not None:
-            m.add(Content("out", self._pending))
-        return m
+    def out(self) -> Bag:
+        return {"out": [self._pending]} if self._pending is not None else {}
 
 
 class Machine(Atomic):
@@ -124,13 +117,12 @@ class Machine(Atomic):
         self.processed = 0
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
+    def deltext(self, e: float, x: Bag) -> None:
         if self.phase_is("passive"):
-            for c in x:
-                if c.get_port_name() == "in":
-                    self._current = c.get_value()
-                    self.hold_in("busy", self._svc)
-                    return
+            items = x.get("in")
+            if items:
+                self._current = items[0]
+                self.hold_in("busy", self._svc)
         else:
             self.cont(e)
 
@@ -140,12 +132,10 @@ class Machine(Atomic):
         self._current = None
         self.passivate()
 
-    def out(self) -> Message:
-        m = Message()
-        if self._current is not None:
-            m.add(Content("done", self._current))
-            m.add(Content("next", IntEnt(1)))
-        return m
+    def out(self) -> Bag:
+        if self._current is None:
+            return {}
+        return {"done": [self._current], "next": [1]}
 
 
 class Collector(Atomic):
@@ -160,11 +150,9 @@ class Collector(Atomic):
         self._clock = 0.0
         self.passivate()
 
-    def deltext(self, e: float, x: Message) -> None:
+    def deltext(self, e: float, x: Bag) -> None:
         self._clock += e
-        for c in x:
-            if c.get_port_name() == "in":
-                self.received.append((self._clock, c.get_value()))
+        self.received.extend((self._clock, part) for part in x.get("in", ()))
 
 
 def build_station(name: str, service_time: float) -> tuple[Digraph, Buffer, Machine]:

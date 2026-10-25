@@ -1,6 +1,6 @@
 import math
 
-from devspy import Atomic, Content, IntEnt, Message
+from devspy import Atomic, Bag
 
 
 class Ticker(Atomic):
@@ -17,10 +17,8 @@ class Ticker(Atomic):
         self.ticks += 1
         self.hold_in("active", 1.0)
 
-    def out(self) -> Message:
-        m = Message()
-        m.add(Content("tick", IntEnt(self.ticks + 1)))
-        return m
+    def out(self) -> Bag:
+        return {"tick": [self.ticks + 1]}
 
 
 def test_initial_state_is_passive():
@@ -51,8 +49,4 @@ def test_ticker_initialize_then_out():
     t = Ticker()
     t.initialize()
     assert t.ta() == 1.0
-    m = t.out()
-    assert not m.is_empty()
-    content = next(iter(m))
-    assert content.get_port_name() == "tick"
-    assert int(content.get_value()) == 1
+    assert t.out() == {"tick": [1]}

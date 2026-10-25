@@ -4,42 +4,40 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Iterator, List, Optional
 
 from devspy.modeling.atomic import Atomic
-from devspy.modeling.devs import DevsBase, IOBasicDevs
-from devspy.modeling.entity import Pair
-from devspy.modeling.message import Message
+from devspy.modeling.devs import Bag, DevsBase, IOBasicDevs
 
 if TYPE_CHECKING:
     from devspy.simulation.coordinator import Coordinator
 
+#: A coupling endpoint: (component name, port name).
+Endpoint = tuple[str, str]
+
 
 class Couprel:
-    """Coupling relation: maps `Pair(src_component, src_port)` to a set of
-    `Pair(dst_component, dst_port)` destinations.
-
-    Equivalent to DEVSJAVA's `couprel` backed by a multi-valued Relation.
-    """
+    """Coupling relation: maps a source `(component, port)` to the set of
+    destination `(component, port)` endpoints it is coupled to."""
 
     def __init__(self) -> None:
-        self._map: dict[Pair, set[Pair]] = defaultdict(set)
+        self._map: dict[Endpoint, set[Endpoint]] = defaultdict(set)
 
-    def add(self, src: Pair, dst: Pair) -> None:
+    def add(self, src: Endpoint, dst: Endpoint) -> None:
         self._map[src].add(dst)
 
-    def remove(self, src: Pair, dst: Pair) -> None:
+    def remove(self, src: Endpoint, dst: Endpoint) -> None:
         if src in self._map:
             self._map[src].discard(dst)
             if not self._map[src]:
                 del self._map[src]
 
-    def translate(self, src_name: str, port_name: str) -> set[Pair]:
-        return set(self._map.get(Pair(src_name, port_name), set()))
+    def translate(self, src_name: str, port_name: str) -> set[Endpoint]:
+        return set(self._map.get((src_name, port_name), ()))
 
-    def iter_pairs(self) -> Iterator[tuple[Pair, Pair]]:
+    def iter_pairs(self) -> Iterator[tuple[Endpoint, Endpoint]]:
         for src, dsts in self._map.items():
             for dst in dsts:
                 yield src, dst
 
-    def __iter__(self) -> Iterator[tuple[Pair, Pair]]:
+    def __iter__(self) -> Iterator[tuple[Endpoint, Endpoint]]:
         return self.iter_pairs()
 
 
@@ -78,15 +76,12 @@ class Digraph(Coupled):
         dst: DevsBase,
         dst_port: str,
     ) -> None:
-        self._couprel.add(
-            Pair(src.get_name(), src_port),
-            Pair(dst.get_name(), dst_port),
-        )
+        self._couprel.add((src.get_name(), src_port), (dst.get_name(), dst_port))
 
-    def add_pair(self, src: Pair, dst: Pair) -> None:
+    def add_pair(self, src: Endpoint, dst: Endpoint) -> None:
         self._couprel.add(src, dst)
 
-    def remove_pair(self, src: Pair, dst: Pair) -> None:
+    def remove_pair(self, src: Endpoint, dst: Endpoint) -> None:
         self._couprel.remove(src, dst)
 
     def with_name(self, name: str) -> Optional[IOBasicDevs]:
@@ -131,14 +126,14 @@ class Digraph(Coupled):
     def deltint(self) -> None:
         pass
 
-    def deltext(self, e: float, x: Message) -> None:
+    def deltext(self, e: float, x: Bag) -> None:
         pass
 
-    def deltcon(self, e: float, x: Message) -> None:
+    def deltcon(self, e: float, x: Bag) -> None:
         pass
 
-    def out(self) -> Message:
-        return Message()
+    def out(self) -> Bag:
+        return {}
 
     def __repr__(self) -> str:
         return " ".join(repr(c) for c in self._components)

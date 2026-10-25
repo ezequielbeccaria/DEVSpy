@@ -5,7 +5,7 @@ DEVS (Discrete Event System Specification) describes a system as a set of
 models. DEVSpy implements the *Parallel DEVS* (PDEVS) formalism: simultaneous
 events are handled with a confluent transition (`deltcon`), all imminent
 components emit in the same step (no `select` tie-breaking), and inputs
-arrive as bags (`Message`).
+arrive as bags, which are plain dicts of `{port: [values]}`.
 
 ## Atomic models
 
@@ -18,7 +18,7 @@ An atomic model has:
 | δ_int(s)    | `deltint()`                       | internal transition (fires when `ta` elapses)            |
 | δ_ext(s,e,x)| `deltext(e, x)`                   | external transition (fires when input arrives)           |
 | δ_con(s,e,x)| `deltcon(e, x)`                   | confluent transition (input arrives at same time as int) |
-| λ(s)        | `out()` returning a `Message`     | output function (called *just before* `δ_int`)           |
+| λ(s)        | `out()` returning `{port: [values]}` | output function (called *just before* `δ_int`)        |
 
 `e` is the time elapsed since the last transition.
 
