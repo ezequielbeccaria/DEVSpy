@@ -122,11 +122,33 @@ Coupled DEVS model.
 ```python
 g = Digraph(name)
 g.add(component)                                # Atomic or Digraph
-g.add_coupling(src, src_port, dst, dst_port)    # both can be Atomic or Digraph
+g.add_coupling(src, src_port, dst, dst_port)    # models or names
+g.remove(component_or_name)                     # also drops its couplings
+g.remove_coupling(src, src_port, dst, dst_port)
 g.add_inport(name)                              # for nested digraphs
 g.add_outport(name)
 g.get_components() / g.get_couprel()
 ```
+
+### Variable structure
+
+The calls above also work while the digraph is being simulated, from outside
+(between `advance` calls) or from a model's transition. An atomic can use
+`self.add_model(m)`, `self.remove_model(m_or_name)`,
+`self.add_coupling(...)` and `self.remove_coupling(...)` on its parent digraph.
+The semantics are DSDEVS:
+
+- A change made during the round at `t` takes effect **after** that round, so
+  every transition at `t` sees the old structure.
+- New atomics are initialized at the current time (`facade.time`, the last
+  event) and can be imminent in a following round at the same `t`.
+- Removed atomics leave the schedule. Models that stay keep their state.
+- The new network is validated. A rejected change made outside a round is
+  undone and raises `ModelStructureError`. One made inside a round raises when
+  the round ends.
+- `reset()` re-initializes the current structure; it does not undo changes.
+  `restore()` refuses a snapshot taken with a different structure.
+- Editing `get_couprel()` directly bypasses all of this.
 
 ---
 
