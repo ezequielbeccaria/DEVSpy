@@ -43,6 +43,15 @@ and fails loudly on invalid models.
   happens in place, and a snapshot can be restored repeatedly.
 - `inject_at(t, bag)` on the simulators, the absolute-time form of `sim_inject`.
 
+### Added: variable structure
+
+- `Digraph.add/remove/add_coupling/remove_coupling/add_pair/remove_pair` work
+  during a simulation. `Atomic.add_model/remove_model/add_coupling/remove_coupling`
+  act on the parent digraph. Changes apply after the current round (DSDEVS); new
+  atomics start at the current time.
+- `Digraph.remove` also drops the couplings of the removed component, and
+  accepts a name. `add_coupling` accepts names as well as models.
+
 ### Performance
 
 - The coordinator rebuilds its event heap when stale entries pile up (more than

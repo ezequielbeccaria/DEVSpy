@@ -34,6 +34,12 @@ class Coordinator(AtomicSimulator):
     The network is validated while flattening (`ModelStructureError`), and a run
     that spends more than `max_rounds_per_instant` rounds at a single time
     raises `ZeroTimeLoopError` instead of hanging (`None` disables the check).
+
+    Variable structure: when a digraph of the hierarchy changes (components or
+    couplings added or removed, e.g. from a model's transition), the network is
+    re-flattened after the current round, as in DSDEVS. Every transition at t
+    sees the old structure, existing simulators keep their state, new atomics
+    are initialized at t, and removed ones leave the schedule.
     """
 
     def __init__(self, coupled: Digraph, set_simulators: bool = True) -> None:
@@ -51,22 +57,41 @@ class Coordinator(AtomicSimulator):
         self._receivers: list[CoupledSimulator] = []
         self._imminent_time: float = -INFINITY
         self._ext_fanout: dict[str, list[Fanout]] = {}
+        # Inside a run or a δ phase, structure changes wait for the round to end.
+        self._running = False
+        self._structure_pending = False
+        self._digraphs: list[Digraph] = []
         coupled.set_coordinator(self)
         if set_simulators:
             self._flatten()
 
     # --- flattening --------------------------------------------------------
-    def _flatten(self) -> None:
+    def _flatten(self, reuse: Optional[dict[int, CoupledSimulator]] = None) -> list:
+        """(Re)build the simulators and routes from the digraph hierarchy.
+
+        `reuse` maps id(model) to the existing simulator of an atomic that is
+        still in the network; those keep their times and state. Returns the
+        simulators created for atomics that had none."""
         self._parent: dict[int, Digraph] = {}
         self._children: dict[int, dict[str, object]] = {}
+        self.simulators = []
+        self._digraphs = []
         sim_of: dict[int, CoupledSimulator] = {}
+        fresh: list[CoupledSimulator] = []
 
         def visit(g: Digraph) -> None:
             g.set_coordinator(self)
+            self._digraphs.append(g)
             self._children[id(g)] = _check_components(g)
             for c in g.get_components():
                 if isinstance(c, Atomic):
-                    sim = CoupledSimulator(c, len(self.simulators))
+                    sim = reuse.pop(id(c), None) if reuse else None
+                    if sim is None:
+                        sim = CoupledSimulator(c, len(self.simulators))
+                        fresh.append(sim)
+                    else:
+                        sim.index = len(self.simulators)
+                        sim.routes = {}
                     self.simulators.append(sim)
                     sim_of[id(c)] = sim
                 elif isinstance(c, Digraph):
@@ -104,6 +129,46 @@ class Coordinator(AtomicSimulator):
             sim.fanout = {port: _group(routes) for port, routes in sim.routes.items()}
         self.custom_show_state = any(sim.custom_show_state for sim in self.simulators)
         self._heap_limit = 2 * len(self.simulators) + 64
+        self._ext_fanout = {}
+        return fresh
+
+    # --- variable structure ------------------------------------------------
+    def structure_changed(self) -> None:
+        """Called by a digraph of this hierarchy after it changed. Re-flattens now,
+        or after the current round when called from inside one."""
+        if self._running:
+            self._structure_pending = True
+        else:
+            self._restructure()
+
+    def _restructure(self) -> None:
+        self._structure_pending = False
+        old_digraphs = self._digraphs
+        backup = (
+            self.simulators, self._parent, self._children, self._sim_of, old_digraphs,
+            self._heap_limit, [(s, s.index, s.routes, s.fanout) for s in self.simulators],
+        )
+        try:
+            fresh = self._flatten({id(s.my_model): s for s in self.simulators})
+        except Exception:
+            (self.simulators, self._parent, self._children, self._sim_of, self._digraphs,
+             self._heap_limit, sims) = backup
+            for sim, index, routes, fanout in sims:
+                sim.index, sim.routes, sim.fanout = index, routes, fanout
+            raise
+        live = {id(g) for g in self._digraphs}
+        for g in old_digraphs:
+            if id(g) not in live:
+                g.set_coordinator(None)  # type: ignore[arg-type]
+        if self.initialized:
+            t = self.t_l
+            for sim in fresh:  # new atomics start at the current time
+                model = sim.my_model
+                sim.t_l = t
+                model.initialize()
+                sim.t_n = t + model.ta()
+        self._rebuild_heap()
+        self.t_n = self.next_tn()
 
     def _resolve(self, g: Digraph, name: str, port: str, out: list[Route]) -> None:
         """Follow a coupling destination `(name, port)` inside digraph `g` down/up to
@@ -149,11 +214,12 @@ class Coordinator(AtomicSimulator):
     def initialize(self, current_time: float = 0.0) -> None:
         show = self.custom_show_state or is_enabled(FULL)
         heap: list[tuple[float, int, int]] = []
+        self._running = True  # a model's initialize() may change the structure
         for sim in self.simulators:
             model = sim.my_model
+            sim.t_l = current_time
             model.initialize()
             sim.input = {}
-            sim.t_l = current_time
             sim.t_n = current_time + model.ta()
             sim.version += 1
             if sim.t_n < INFINITY:
@@ -170,6 +236,9 @@ class Coordinator(AtomicSimulator):
         self.t_l = current_time
         self.t_n = self.next_tn()
         self.initialized = True
+        self._running = False
+        if self._structure_pending:
+            self._restructure()
 
     # --- transition --------------------------------------------------------
     def _pop(self, time: float) -> list[CoupledSimulator]:
@@ -286,13 +355,19 @@ class Coordinator(AtomicSimulator):
             # imminents' λ must still run and be routed before their δ.
             self.compute_input_output(time)
         self._send_down_messages()
-        self._delta(time, self._imminent, self._receivers)
+        running, self._running = self._running, True
+        try:
+            self._delta(time, self._imminent, self._receivers)
+        finally:
+            self._running = running
         self._imminent = []
         self._receivers = []
         self._imminent_time = -INFINITY
         self.t_l = time
         self.t_n = self.next_tn()
         self.input = {}
+        if self._structure_pending and not running:
+            self._restructure()
         if self.output:  # root outputs of this round, shown after it as in _run
             self.show_output()
             self.output = {}
@@ -325,6 +400,13 @@ class Coordinator(AtomicSimulator):
         if not self.initialized:
             self.initialize(0.0)
         self._stop_sim_flag = False
+        self._running = True
+        try:
+            self._rounds(num_iter, max_time)
+        finally:
+            self._running = False
+
+    def _rounds(self, num_iter: float, max_time: float) -> None:
         logging_on = is_enabled(FULL)
         show_state = self.custom_show_state or logging_on
         run_round = self._round
@@ -347,6 +429,8 @@ class Coordinator(AtomicSimulator):
             else:
                 last_t, same = t, 1
             run_round(t)
+            if self._structure_pending:
+                self._restructure()
             if self.output:
                 self.show_output()
                 self.output = {}
@@ -366,12 +450,15 @@ class Coordinator(AtomicSimulator):
             "sims": [(s.t_l, s.t_n, s.version, s.input) for s in self.simulators],
             "heap": list(self._heap),
             "times": (self.t_l, self.t_n),
+            "structure": [id(s.my_model) for s in self.simulators],
         }
         return deepcopy_keeping(state, self._structure())
 
     def restore(self, snapshot: dict) -> None:
         """Put every model and simulator back in the state of `snapshot`, in
         place. A snapshot can be restored any number of times."""
+        if snapshot["structure"] != [id(s.my_model) for s in self.simulators]:
+            raise ValueError("the network structure changed since this snapshot")
         state = deepcopy_keeping(snapshot, self._structure())
         for sim, ms, (t_l, t_n, version, inp) in zip(
             self.simulators, state["models"], state["sims"]
