@@ -12,6 +12,9 @@ level by level. It is slow, but each step can be checked against the formalism:
                and maps it through EOC. At (x, t) it builds each child's bag from
                EIC (external input) and IC (the collected outputs), and sends
                (x_d, t) to IMM(t) ∪ {d | x_d ≠ ∅}.
+- structure:   dynamic structure as in DSDEVS. After the round at t, every
+               coordinator re-reads its digraph: new components are initialized
+               at t, removed ones are dropped, couplings are re-read.
 """
 
 from __future__ import annotations
@@ -65,6 +68,23 @@ class RefCoordinator:
         self.tl = 0.0
         self.tn = INF
         self.collected: dict[str, Bag] = {}
+
+    def sync(self, t: float) -> None:
+        """Adopt the digraph's current components and couplings (after a round)."""
+        old = {}
+        for c in self.children.values():
+            old[id(c.model if isinstance(c, RefSimulator) else c.g)] = c
+        self.children = {}
+        for c in self.g.get_components():
+            sim = old.get(id(c))
+            if sim is None:
+                sim = RefSimulator(c) if isinstance(c, Atomic) else RefCoordinator(c)
+                sim.init(t)
+            elif isinstance(sim, RefCoordinator):
+                sim.sync(t)
+            self.children[c.get_name()] = sim
+        self.couplings = list(self.g.get_couprel().iter_pairs())
+        self.tn = min((c.tn for c in self.children.values()), default=INF)
 
     def init(self, t: float) -> None:
         for child in self.children.values():
@@ -121,3 +141,4 @@ def run(digraph: Digraph, end: float, injections=()) -> list[tuple[float, Bag]]:
             if y:
                 outputs.append((t, y))
         root.delta(t, x)
+        root.sync(t)

@@ -9,6 +9,7 @@ import sys
 
 C = pathlib.Path("src/devspy/simulation/coordinator.py")
 A = pathlib.Path("src/devspy/modeling/atomic.py")
+D = pathlib.Path("src/devspy/modeling/digraph.py")
 M = [
   ("confluent -> deltext", C, "model.deltcon(time - sim.t_l, x_bag)", "model.deltext(time - sim.t_l, x_bag)"),
   ("default deltcon old e", A, "self.deltext(0.0, x)", "self.deltext(e, x)"),
@@ -20,6 +21,10 @@ M = [
   ("injection skips λ", C, "            self.compute_input_output(time)\n        self._send_down_messages()", "            self._imminent = self._pop(time)\n        self._send_down_messages()"),
   ("skip reschedule of imminents too", C, "if tn == old_tn != time:", "if tn == old_tn:"),
   ("heap rebuilt with stale versions", C, "heap = [(s.t_n, s.index, s.version) for s in self.simulators if s.t_n < INFINITY]", "heap = [(s.t_n, s.index, s.version - 1) for s in self.simulators if s.t_n < INFINITY]"),
+  ("structure change applied mid-round", C, "        if self._running:\n            self._structure_pending = True", "        if False:\n            self._structure_pending = True"),
+  ("new atomics start at t=0", C, "                sim.t_n = t + model.ta()", "                sim.t_n = model.ta()"),
+  ("restructure loses existing state", C, "                    sim = reuse.pop(id(c), None) if reuse else None", "                    sim = None"),
+  ("removal keeps couplings", D, "        for src, dst in dropped:\n            self._couprel.remove(src, dst)", "        pass"),
   ("root output dropped", C, "inp = root_out if dsim is None else dsim.input", "inp = {} if dsim is None else dsim.input"),
 ]
 for name, path, old, new in M:

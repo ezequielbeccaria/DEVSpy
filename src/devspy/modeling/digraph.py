@@ -51,7 +51,10 @@ class Coupled(DevsBase):
 class Digraph(Coupled):
     """Coupled DEVS model: a set of components + a coupling relation.
 
-    Supports atomic and digraph components (hierarchy).
+    Supports atomic and digraph components (hierarchy). Changing the components
+    or couplings of a digraph that is being simulated (e.g. from a model's
+    transition) reaches the coordinator, which applies the change after the
+    current round. Editing `get_couprel()` directly bypasses that.
     """
 
     def __init__(self, name: str) -> None:
@@ -64,25 +67,70 @@ class Digraph(Coupled):
     def add(self, component: IOBasicDevs | "Digraph") -> None:
         self._components.append(component)  # type: ignore[arg-type]
         component.set_parent(self)
+        self._changed(lambda: self._components.remove(component))  # type: ignore[arg-type]
 
-    def remove(self, component: IOBasicDevs | "Digraph") -> None:
-        if component in self._components:
-            self._components.remove(component)  # type: ignore[arg-type]
+    def remove(self, component: IOBasicDevs | "Digraph" | str) -> None:
+        """Remove a component (or the component with that name) and every
+        coupling of this digraph that involves it."""
+        if isinstance(component, str):
+            component = self.with_name(component)  # type: ignore[assignment]
+        if component is None or component not in self._components:
+            return
+        position = self._components.index(component)  # type: ignore[arg-type]
+        self._components.remove(component)  # type: ignore[arg-type]
+        name = component.get_name()
+        dropped = [(s, d) for s, d in self._couprel.iter_pairs() if name in (s[0], d[0])]
+        for src, dst in dropped:
+            self._couprel.remove(src, dst)
+
+        def undo() -> None:
+            self._components.insert(position, component)  # type: ignore[arg-type]
+            for src, dst in dropped:
+                self._couprel.add(src, dst)
+
+        self._changed(undo)
 
     def add_coupling(
         self,
-        src: DevsBase,
+        src: DevsBase | str,
         src_port: str,
-        dst: DevsBase,
+        dst: DevsBase | str,
         dst_port: str,
     ) -> None:
-        self._couprel.add((src.get_name(), src_port), (dst.get_name(), dst_port))
+        self.add_pair((_name(src), src_port), (_name(dst), dst_port))
+
+    def remove_coupling(
+        self,
+        src: DevsBase | str,
+        src_port: str,
+        dst: DevsBase | str,
+        dst_port: str,
+    ) -> None:
+        self.remove_pair((_name(src), src_port), (_name(dst), dst_port))
 
     def add_pair(self, src: Endpoint, dst: Endpoint) -> None:
+        if dst in self._couprel.translate(*src):
+            return
         self._couprel.add(src, dst)
+        self._changed(lambda: self._couprel.remove(src, dst))
 
     def remove_pair(self, src: Endpoint, dst: Endpoint) -> None:
+        if dst not in self._couprel.translate(*src):
+            return
         self._couprel.remove(src, dst)
+        self._changed(lambda: self._couprel.add(src, dst))
+
+    def _changed(self, undo) -> None:
+        """Tell the coordinator, if any. A change it rejects right away (outside a
+        round) is undone before the error propagates; changes made inside a
+        round are validated when the round ends."""
+        if self._coordinator is None:
+            return
+        try:
+            self._coordinator.structure_changed()
+        except Exception:
+            undo()
+            raise
 
     def with_name(self, name: str) -> Optional[IOBasicDevs]:
         for c in self._components:
@@ -110,7 +158,7 @@ class Digraph(Coupled):
             if hasattr(c, "show_state"):
                 c.show_state()
 
-    def set_coordinator(self, coordinator: "Coordinator") -> None:
+    def set_coordinator(self, coordinator: Optional["Coordinator"]) -> None:
         self._coordinator = coordinator
 
     def get_coordinator(self) -> Optional["Coordinator"]:
@@ -137,3 +185,7 @@ class Digraph(Coupled):
 
     def __repr__(self) -> str:
         return " ".join(repr(c) for c in self._components)
+
+
+def _name(model: DevsBase | str) -> str:
+    return model if isinstance(model, str) else model.get_name()

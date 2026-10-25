@@ -613,11 +613,70 @@ transition. Against `22780c0` the difference is within noise: DEVStone 20×20
 328.5 → 333.2 ms on one sample, other shapes ±1%; RL m=64 22.74/23.14 →
 22.76/23.17 ms/ep across repeated runs.
 
+## Iteration 9: variable structure (branch `feat/variable-structure`)
+
+Backlog item 1: DEVSJAVA's `addModel`, `removeModel`, `addCoupling` and
+`removeCoupling`.
+
+- **API**: the `Digraph` mutators, plus the `Atomic` shortcuts (`add_model`,
+  `remove_model`, `add_coupling`, `remove_coupling`) on the parent digraph.
+  They work from outside between runs and from inside transitions.
+- **Kernel**: a mutated digraph calls `coordinator.structure_changed()`. Inside
+  a run or a δ phase the change is deferred, and `_restructure()` runs after
+  the round. That method:
+  - re-flattens, reusing the existing `CoupledSimulator` objects, which keep
+    their `t_l`, `t_n`, version and state;
+  - initializes new atomics at `t_l`;
+  - drops removed atomics and rebuilds the heap;
+  - rolls back if the new network is invalid.
+
+  An invalid change made outside a round is also undone in the digraph.
+  DEVSJAVA does the same deferral: it collects the simulators in
+  `newSimulators` and `deletedSimulators` and applies them in
+  `updateChangedSimulators()` after the δ phase.
+
+**PDEVS argument.** In DSDEVS (Barros 1995, 1997) the network executive's
+transition at t defines the structure that holds from t on. The δ functions of
+round t are computed with the structure in force when that round began.
+Deferring the change to the end of the round gives exactly that. Every model
+of round t sees the same couplings, and outputs of t are routed by the old
+structure.
+
+- A component added at t starts in its initial state with t_l = t.
+- A removed component leaves both the schedule and the network.
+
+Barros showed DSDEVS is closed under coupling, so the flat equivalent is a
+valid (DS)DEVS network. Applying the change mid-round would make a model's
+input depend on the δ order of its siblings. The mutation check confirms that
+the oracle rejects that variant.
+
+**Validation.**
+
+- The oracle supports dynamic structure literally: after each round every
+  reference coordinator re-reads its digraph and initializes new components
+  at t.
+- `test_variable_structure_matches_reference` covers 200 random models with
+  "spawners". These atomics, on internal transitions, add coupled siblings or
+  remove one, and also receive random injections. In total there were 676
+  additions and 448 removals.
+- 8 unit tests in `tests/test_variable_structure.py`.
+- `mutation_check.py` gains 4 structure mutations, for 15 in total, and **all
+  are caught**:
+  - change applied mid-round;
+  - new atomics scheduled from t=0;
+  - re-flatten losing state;
+  - removal keeping couplings.
+- `trace_diff.py --model-level`, the TrackRailway trajectories, RLDEVSpy and
+  TrackRailway tests are all unchanged.
+
+**Cost**: one attribute check per round. Against `faab105` the difference is
+within noise on DEVStone (±1.5%) and RL.
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:
 
-1. **Variable structure**: adding or removing models and couplings at run time
+1. ~~**Variable structure**~~ (done in iteration 9): adding or removing models and couplings at run time
    (`atomic.addModel/removeModel/addCoupling/removeCoupling`,
    `coordinator.setNewSimulator`, `updateChangedSimulators`). None of the
    RLDEVS4j projects use it.
