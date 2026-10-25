@@ -474,6 +474,25 @@ class Coordinator(AtomicSimulator):
         self.output = {}
         self.initialized = True
 
+    def inject_to(self, model, t: float, bag: Bag) -> None:
+        """Deliver `bag` straight to input ports of the atomic `model` at time `t`
+        (used for activity results): an external event on a hidden root input
+        coupled to that model. At `t == t_n` the imminents' λ runs first."""
+        sim = getattr(model, "_simulator", None)
+        if sim is None or sim.index >= len(self.simulators) or self.simulators[sim.index] is not sim:
+            raise ValueError(f"{model!r} is not part of this simulation")
+        self.t_n = self.next_tn()
+        _check_injection(self, t, bag, model._inports)
+        if self._imminent_time != t:
+            self.compute_input_output(t)
+        inp = sim.input
+        if not inp:
+            self._receivers.append(sim)
+        for port, values in bag.items():
+            inp.setdefault(port, []).extend(values)
+        self.wrap_deltfunc(t)
+        self.show_model_state()
+
     def _structure(self) -> list:
         """Objects a snapshot keeps by reference: models, digraphs, simulators."""
         objs: list = [self, self.my_coupled, *self.simulators]

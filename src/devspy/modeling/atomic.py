@@ -77,6 +77,23 @@ class Atomic(IOBasicDevs):
             raise RuntimeError(f"{self.get_name()!r} is not inside a digraph")
         return parent
 
+    # --- activities (real-time runs) --------------------------------------
+    def start_activity(self, fn, *args, port: str = "activity", **kwargs):
+        """Run `fn(*args, **kwargs)` in a thread; its return value arrives later
+        as external input on this model's input `port`. Only during a real-time
+        run (`DevsSuiteFacade.real_time().run()`): in logical time, model a known
+        duration with `hold_in` instead. Returns an `Activity` (`cancel()`)."""
+        from devspy.simulation.real_time import Activity
+
+        if port not in self._inports:
+            raise ValueError(f"{self.get_name()!r} has no input port {port!r}")
+        parent = self.get_parent()
+        coordinator = parent.get_coordinator() if parent is not None else None
+        runner = getattr(coordinator, "_rt_runner", None)
+        if runner is None:
+            raise RuntimeError("activities need a real-time run: DevsSuiteFacade.real_time().run()")
+        return Activity(runner, self, port, fn, args, kwargs)
+
     # --- DEVS contract -----------------------------------------------------
     def ta(self) -> float:
         return self.sigma

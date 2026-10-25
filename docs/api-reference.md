@@ -56,6 +56,32 @@ obs = f.advance(stop_on_output=True)
 checkpoint = f.snapshot()                 # ... later: f.restore(checkpoint)
 ```
 
+### Real time and activities
+
+```python
+runner = f.real_time(speed=1.0)            # simulated units per wall-clock second
+threading.Thread(target=sensor_loop, args=(runner,)).start()   # calls runner.post(...)
+outputs = runner.run(until=600.0, on_output=lambda t, y: actuate(y))
+```
+
+- `run(until, on_output)` paces the simulation: simulated time t is reached at
+  wall time `start + (t - t0) / speed`. Root outputs are returned and also
+  passed to `on_output` as they happen. If the host falls behind, due events
+  run immediately and in order.
+- `post(port, value)`, `post({port: [values]})` and `post(..., to=atomic)` can
+  be called from any thread. The input is delivered at the simulated time that
+  matches its arrival. An input that arrives exactly when an internal event is
+  due goes in its own round right after that event, at the same t.
+- `stop()` (any thread) ends the run.
+- Inside a real-time run an atomic can call `self.start_activity(fn, *args,
+  port="activity")`. `fn` runs in a thread, and its return value arrives later
+  as external input on the model's `port`, like DEVSJAVA's activities. An
+  exception in `fn` stops the run. `cancel()` on the returned `Activity`
+  discards its result. In logical time, model a known duration with
+  `hold_in` instead.
+- Pass `clock=` (a `WallClock` subclass with `now()` and `wait(inbox, timeout)`)
+  to run against a virtual clock in tests.
+
 ### `Observer`
 
 Subclass `devspy.Observer` and override what you need:

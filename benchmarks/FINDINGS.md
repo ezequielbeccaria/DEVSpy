@@ -672,6 +672,59 @@ the oracle rejects that variant.
 **Cost**: one attribute check per round. Against `faab105` the difference is
 within noise on DEVStone (±1.5%) and RL.
 
+## Iteration 10: real time and activities (branch `feat/real-time`)
+
+Backlog items 2 and 3: DEVSJAVA's `RTcoordinator`/`TunableCoordinator` and
+`activity`.
+
+- **`RealTimeRunner`** (`facade.real_time(speed, clock)`) runs the coordinator
+  one round at a time (`_run(1, t_next)`). Simulated time t is reached at wall
+  time `start + (t - t0)/speed`. Other threads only touch a `queue.Queue`
+  inbox, through `post(...)`, `post(..., to=atomic)` and `stop()`.
+  - An input is delivered at the simulated time that matches its arrival,
+    clamped to [t_l, t_n].
+  - Every due event runs first. When the host falls behind, overdue events run
+    back to back.
+- **Activities.** `Atomic.start_activity(fn, *args, port=...)` runs `fn` in a
+  thread, and its result comes back as external input on the model's port
+  (`inject_to`). An exception stops the run, and `cancel()` drops the result.
+  DEVSJAVA's logical-time activities draw a random completion time and mutate
+  `sigma`, which is not deterministic. In DEVSpy activities are real-time only;
+  in logical time a known duration is just `hold_in`.
+
+**PDEVS argument.** Real time does not change the abstract simulator, only
+when its rounds run on the wall clock.
+
+- External input is an (x, t) message at a t with t_l ≤ t ≤ t_N, as the
+  synchronization check requires.
+- An activity result on an atomic's port is equivalent to an external input on
+  a hidden root input port coupled to that port.
+- One choice is forced: a runner cannot know an input will arrive at exactly
+  an internal event's time, so such an input goes in its own round after the
+  event, at the same t. That is a legal PDEVS trajectory, with the input
+  arriving an infinitesimal later. It differs only in that the input is not
+  confluent with the event.
+
+**Validation.**
+
+- The oracle gains `confluent_injections=False`, which encodes that policy.
+- `test_real_time_run_matches_reference` covers 100 random models with posts
+  scheduled on a virtual clock at speed 2. Per-model transitions and root
+  outputs match.
+- Unit tests check:
+  - wall-time pacing at speeds 0.5, 1 and 2;
+  - posted inputs arriving at the matching t;
+  - an input arriving with a due event;
+  - catching up after host stalls;
+  - `stop()`.
+- With real threads and the real clock: a post from another thread, an
+  activity result arriving ≥10 ms later, an activity exception propagating,
+  and activities refused outside real time. The threaded tests passed 30/30
+  repeated runs.
+- `mutation_check.py`: 17 mutations, all caught, including "input delivered at
+  the last event" and "pacing ignores speed".
+- The kernel hot path is unchanged.
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:
@@ -680,10 +733,10 @@ In order of relevance for this project:
    (`atomic.addModel/removeModel/addCoupling/removeCoupling`,
    `coordinator.setNewSimulator`, `updateChangedSimulators`). None of the
    RLDEVS4j projects use it.
-2. **Real-time simulation** (`model.simulation.realTime`: `RTcoordinator`,
+2. ~~**Real-time simulation**~~ (done in iteration 10) (`model.simulation.realTime`: `RTcoordinator`,
    `atomicRTSimulator`, `TunableCoordinator`): pacing to the wall clock, and
    input injection from threads.
-3. **Activities** (`activity`, `holdIn(phase, sigma, activity)`): a threaded
+3. ~~**Activities**~~ (done in iteration 10, real time only) (`activity`, `holdIn(phase, sigma, activity)`): a threaded
    computation tied to a phase, whose result comes back as input.
 4. GenCol collections (`Queue`, `Relation`, `Function`, `ZRelation`). Python's
    built-ins cover them, so this is low priority.

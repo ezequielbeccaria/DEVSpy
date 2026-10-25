@@ -120,12 +120,16 @@ class RefCoordinator:
         self.tn = min((c.tn for c in self.children.values()), default=INF)
 
 
-def run(digraph: Digraph, end: float, injections=()) -> list[tuple[float, Bag]]:
+def run(
+    digraph: Digraph, end: float, injections=(), confluent_injections: bool = True
+) -> list[tuple[float, Bag]]:
     """Run the root loop to `end`; return the root outputs as (t, bag) pairs.
 
     `injections` is a time-sorted list of (t, bag) external inputs on the root's
     input ports, each one an (x, t) message to the root. When t is also the root's
-    tN, (*, t) comes first and both are one confluent round.
+    tN, (*, t) comes first and both are one confluent round; with
+    `confluent_injections=False` the internal round runs alone and the input
+    follows in its own round at the same t (the real-time runner's policy).
     """
     root = RefCoordinator(digraph)
     root.init(0.0)
@@ -135,7 +139,9 @@ def run(digraph: Digraph, end: float, injections=()) -> list[tuple[float, Bag]]:
         t = min(root.tn, pending[0][0] if pending else INF)
         if t > end or t == INF:
             return outputs
-        x = pending.pop(0)[1] if pending and pending[0][0] == t else {}
+        x = {}
+        if pending and pending[0][0] == t and (confluent_injections or t < root.tn):
+            x = pending.pop(0)[1]
         if t == root.tn:
             y = root.output(t)
             if y:

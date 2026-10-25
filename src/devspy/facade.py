@@ -9,6 +9,7 @@ from devspy.modeling.atomic import Atomic
 from devspy.modeling.devs import Bag
 from devspy.modeling.digraph import Digraph
 from devspy.simulation.observer import Observer
+from devspy.simulation.real_time import RealTimeRunner, WallClock
 from devspy.simulation.time_atomic_simulator import TimeAtomicSimulator
 from devspy.simulation.time_coordinator import TimeCoordinator
 
@@ -146,6 +147,12 @@ class DevsSuiteFacade:
 
     def remove_observer(self, observer: Observer) -> None:
         self._require_sim().observers.remove(observer)
+
+    def real_time(self, speed: float = 1.0, clock: Optional[WallClock] = None) -> RealTimeRunner:
+        """A runner that paces the simulation against the wall clock (`speed`
+        simulated units per second). Call `run(until)` in one thread and
+        `post(...)`/`stop()` from any other."""
+        return RealTimeRunner(self._require_sim(), speed=speed, clock=clock)
 
     # --- snapshots ---------------------------------------------------------
     def snapshot(self) -> dict:
