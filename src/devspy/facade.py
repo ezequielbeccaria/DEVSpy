@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import copy
-from typing import Optional, Union
+import math
+from typing import Any, Optional, Union
 
 from devspy.exceptions import NoModelSetError
 from devspy.modeling.atomic import Atomic
+from devspy.modeling.devs import Bag
 from devspy.modeling.digraph import Digraph
+from devspy.simulation.observer import Observer
 from devspy.simulation.time_atomic_simulator import TimeAtomicSimulator
 from devspy.simulation.time_coordinator import TimeCoordinator
 
@@ -93,6 +96,67 @@ class DevsSuiteFacade:
             assert self._coordinator is not None
             self._coordinator.initialize(0.0)
 
+    # --- stepping ----------------------------------------------------------
+    @property
+    def time(self) -> float:
+        """Time of the last event (or injection)."""
+        return self._require_sim().t_l
+
+    @property
+    def next_event_time(self) -> float:
+        """Time of the next internal event (`inf` if every model is passive)."""
+        return self._require_sim().next_tn()
+
+    def advance(
+        self, until: float = math.inf, stop_on_output: bool = False
+    ) -> list[tuple[float, Bag]]:
+        """Run every round with `t_n <= until` and return the root outputs as
+        `(t, bag)` pairs, instead of printing them. With `stop_on_output=True`
+        it returns after the first round that produces root output."""
+        sim = self._require_sim()
+        return self._collect(sim, stop_on_output, lambda: sim._run(math.inf, until))
+
+    def inject(
+        self, port_or_bag: Union[str, Bag], value: Any = None, at: Optional[float] = None
+    ) -> list[tuple[float, Bag]]:
+        """Inject external input `at` an absolute time (default: `self.time`).
+
+        Rounds strictly before `at` run first; their root outputs, and those of
+        the injected round, are returned as `(t, bag)` pairs. If `at` is also the
+        time of an internal event, both are one confluent round. Raises
+        `ValueError` if `at` is before `self.time` or a port is undeclared.
+        """
+        sim = self._require_sim()
+        if not sim.initialized:
+            sim.initialize(0.0)
+        t = sim.t_l if at is None else float(at)
+        if t < sim.t_l:
+            raise ValueError(f"cannot inject at {t}: the simulation is already at {sim.t_l}")
+        bag = port_or_bag if isinstance(port_or_bag, dict) else {str(port_or_bag): [value]}
+
+        def run() -> None:
+            sim._run(math.inf, math.nextafter(t, -math.inf))  # rounds strictly before t
+            sim.inject_at(t, bag)
+
+        return self._collect(sim, False, run)
+
+    def add_observer(self, observer: Observer) -> None:
+        """Notify `observer` of every λ output and δ transition from now on."""
+        self._require_sim().observers.append(observer)
+
+    def remove_observer(self, observer: Observer) -> None:
+        self._require_sim().observers.remove(observer)
+
+    # --- snapshots ---------------------------------------------------------
+    def snapshot(self) -> dict:
+        """Copy of the whole simulation state, for `restore`. Model objects stay
+        the same; anything else they reference (RNGs, buffers...) is copied."""
+        return self._require_sim().snapshot()
+
+    def restore(self, snapshot: dict) -> None:
+        """Put the simulation back in the state of `snapshot`, in place."""
+        self._require_sim().restore(snapshot)
+
     def deep_cloning(self) -> Union[TimeAtomicSimulator, TimeCoordinator]:
         sim = self._require_sim()
         return copy.deepcopy(sim)
@@ -105,6 +169,18 @@ class DevsSuiteFacade:
         return self._require_sim()
 
     # --- helpers -----------------------------------------------------------
+    @staticmethod
+    def _collect(sim, stop_on_output: bool, run) -> list[tuple[float, Bag]]:
+        """Run `run()` with the simulator's root outputs collected, not printed."""
+        sink: list[tuple[float, Bag]] = []
+        saved = sim._sink, sim._stop_on_output
+        sim._sink, sim._stop_on_output = sink, stop_on_output
+        try:
+            run()
+        finally:
+            sim._sink, sim._stop_on_output = saved
+        return sink
+
     def _require_sim(self) -> Union[TimeAtomicSimulator, TimeCoordinator]:
         if self._atomic_simulator is None and self._coordinator is None:
             raise NoModelSetError("No model to start simulation set.")

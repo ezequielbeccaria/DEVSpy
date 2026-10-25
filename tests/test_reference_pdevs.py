@@ -63,6 +63,7 @@ class RndAtomic(Atomic):
 
     def deltcon(self, e, x):
         if not self.custom_con:
+            self.log.append((self.clock + e, "con*"))  # marks the default's int + ext
             super().deltcon(e, x)  # deltint(); deltext(0, x)
             return
         self.clock += e
@@ -186,6 +187,104 @@ def test_external_injections_match_reference(seed):
     ref_outputs = reference_pdevs.run(_with_root_input(ref_model), 40.0, injections)
     assert log == ref_log
     assert outputs == [(t, _multiset(y)) for t, y in ref_outputs]
+
+
+def _injections(seed):
+    # On a 0.25 grid: many coincide with internal events (confluent rounds).
+    rng = random.Random(1000 + seed)
+    times = sorted({rng.randrange(0, 160) / 4 for _ in range(rng.randint(1, 8))})
+    return [(t, {"in": [rng.randint(1, 9) for _ in range(rng.randint(1, 3))]}) for t in times]
+
+
+def _atomic_logs(digraph):
+    """name -> log, read from the models (restore() replaces their log lists)."""
+    logs = {}
+    for c in digraph.get_components():
+        if isinstance(c, Digraph):
+            logs.update(_atomic_logs(c))
+        else:
+            logs[c.get_name()] = c.log
+    return logs
+
+
+def _reference_with_injections(seed):
+    ref_model, ref_log = random_model(seed)
+    ref_outputs = reference_pdevs.run(_with_root_input(ref_model), 40.0, _injections(seed))
+    return ref_log, [(t, _multiset(y)) for t, y in ref_outputs]
+
+
+@pytest.mark.parametrize("seed", range(150))
+def test_step_api_matches_reference(seed):
+    model, _ = random_model(seed)
+    f = DevsSuiteFacade(_with_root_input(model))
+    outputs = []
+    for t, bag in _injections(seed):
+        outputs += f.inject(bag, at=t)
+    outputs += f.advance(40.0)
+    ref_log, ref_outputs = _reference_with_injections(seed)
+    assert _atomic_logs(model) == ref_log
+    assert [(t, _multiset(y)) for t, y in outputs] == ref_outputs
+
+
+@pytest.mark.parametrize("seed", range(100))
+def test_snapshot_restore_replays_the_reference(seed):
+    model, _ = random_model(seed)
+    f = DevsSuiteFacade(_with_root_input(model))
+    injections = _injections(seed)
+    early = [(t, b) for t, b in injections if t < 13.3]
+    late = [(t, b) for t, b in injections if t >= 13.3]
+    for t, bag in early:
+        f.inject(bag, at=t)
+    f.advance(13.3)
+    snap = f.snapshot()
+    ref_log, ref_outputs = _reference_with_injections(seed)
+    for _ in range(3):  # restore, replay the rest, compare; three times
+        f.restore(snap)
+        outputs = []
+        for t, bag in late:
+            outputs += f.inject(bag, at=t)
+        outputs += f.advance(40.0)
+        assert _atomic_logs(model) == ref_log
+        assert [(t, _multiset(y)) for t, y in outputs] == [o for o in ref_outputs if o[0] > 13.3]
+
+
+class _Recorder:
+    def __init__(self):
+        self.transitions, self.outputs = [], []
+
+    def on_transition(self, t, model, kind, e, x):
+        self.transitions.append((model.get_name(), t, kind, e, _multiset(x)))
+
+    def on_output(self, t, model, y):
+        self.outputs.append((model.get_name(), t, _multiset(y)))
+
+
+@pytest.mark.parametrize("seed", range(100))
+def test_observer_sees_every_transition_without_perturbing(seed):
+    model, _ = random_model(seed)
+    f = DevsSuiteFacade(_with_root_input(model))
+    rec = _Recorder()
+    f.add_observer(rec)
+    for t, bag in _injections(seed):
+        f.inject(bag, at=t)
+    f.advance(40.0)
+    logs = _atomic_logs(model)
+    assert logs == _reference_with_injections(seed)[0]
+    # Each model's own log and the observer agree on when and how it transitioned.
+    for name, entries in logs.items():
+        seen = [(t, kind, e, x) for n, t, kind, e, x in rec.transitions if n == name]
+        expected, skip = [], 0
+        for entry in entries:
+            if skip:  # the int + ext logged inside a default deltcon
+                skip -= 1
+                continue
+            if entry[1] == "con*":
+                expected.append((entry[0], "con"))
+                skip = 2
+            else:
+                expected.append((entry[0], entry[1]))
+        assert [(t, kind) for t, kind, _, _ in seen] == expected
+    assert all(y for _, _, y in rec.outputs)
 
 
 def test_reset_replays_like_a_fresh_reference_run():

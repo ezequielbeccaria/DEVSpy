@@ -5,6 +5,12 @@ from typing import Any, Optional
 
 from devspy.exceptions import ZeroTimeLoopError
 from devspy.modeling.devs import Bag, IOBasicDevs
+from devspy.simulation.observer import (
+    Observer,
+    deepcopy_keeping,
+    model_state,
+    set_model_state,
+)
 from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
@@ -30,6 +36,12 @@ class AtomicSimulator:
         self.input: Bag = {}
         self.output: Bag = {}
         self.initialized: bool = False
+        self.observers: list[Observer] = []
+        # Root outputs go to _sink as (t, bag) when it is a list, else are printed.
+        self._sink: Optional[list[tuple[float, Bag]]] = None
+        self._stop_on_output = False
+        self._stop_sim_flag = False
+        self._out_t = 0.0
         # The default Atomic.show_state only logs; skip calling it when logging is off.
         self.custom_show_state: bool = _has_custom_show_state(model)
 
@@ -78,17 +90,26 @@ class AtomicSimulator:
         if not x and t != self.t_n:
             return
         if x and t == self.t_n:
+            kind = "con"
             self.my_model.deltcon(t - self.t_l, x)
         elif t == self.t_n:
+            kind = "int"
             self.my_model.deltint()
         else:
+            kind = "ext"
             self.my_model.deltext(t - self.t_l, x)
+        for obs in self.observers:
+            obs.on_transition(t, self.my_model, kind, t - self.t_l, x)
         self.t_l = t
         self.t_n = self.t_l + self.my_model.ta()
 
     def compute_input_output(self, t: float) -> None:
         assert self.my_model is not None
         self.output = (self.my_model.out() or {}) if t == self.t_n else {}
+        self._out_t = t
+        if self.output:
+            for obs in self.observers:
+                obs.on_output(t, self.my_model, self.output)
 
     # --- show/print --------------------------------------------------------
     def show_model_state(self) -> None:
@@ -97,8 +118,14 @@ class AtomicSimulator:
             self.my_model.show_state()
 
     def show_output(self) -> None:
-        if self.output:
+        if not self.output:
+            return
+        if self._sink is None:
             print(_format_bag(self.output))
+        else:
+            self._sink.append((self._out_t, self.output))
+            if self._stop_on_output:
+                self._stop_sim_flag = True
 
     # --- simulation loops --------------------------------------------------
     def simulate(self, num_iter: float) -> None:
@@ -109,9 +136,15 @@ class AtomicSimulator:
         """Run while `t_n <= max_time`, for at most `num_iter` iterations."""
         if not self.initialized:
             self.initialize(0.0)
+        self._stop_sim_flag = False
         i = 1
         guard = _InstantGuard(self.max_rounds_per_instant)
-        while self.t_n < INFINITY and self.t_n <= max_time and i <= num_iter:
+        while (
+            self.t_n < INFINITY
+            and self.t_n <= max_time
+            and i <= num_iter
+            and not self._stop_sim_flag
+        ):
             if is_enabled(FULL):
                 log(f"ITERATION {i} ,time: {self.t_n}", FULL)
             guard.check(self.t_n)
@@ -122,6 +155,27 @@ class AtomicSimulator:
             i += 1
         log(f"Terminated Normally at ITERATION {i} ,time: {self.t_n}", FULL)
 
+    def stop_simulation(self) -> None:
+        """Make the running loop return after the current round."""
+        self._stop_sim_flag = True
+
+    # --- snapshots ---------------------------------------------------------
+    def snapshot(self) -> dict:
+        """Copy of the simulation state (the model's attributes and the times),
+        for `restore`. The model object itself is not copied."""
+        state = {"model": model_state(self.my_model), "times": (self.t_l, self.t_n)}
+        return deepcopy_keeping(state, [self.my_model, self])
+
+    def restore(self, snapshot: dict) -> None:
+        """Put the model and simulator back in the state of `snapshot`, in place.
+        A snapshot can be restored any number of times."""
+        state = deepcopy_keeping(snapshot, [self.my_model, self])
+        set_model_state(self.my_model, state["model"])
+        self.t_l, self.t_n = state["times"]
+        self.input = {}
+        self.output = {}
+        self.initialized = True
+
     # --- injection ---------------------------------------------------------
     def sim_inject(self, e: float, port_or_bag: str | Bag, value: Any = None) -> None:
         """Inject `value` on input `port` (or a whole bag) `e` after the last event.
@@ -130,8 +184,11 @@ class AtomicSimulator:
         """
         assert self.my_model is not None
         bag = port_or_bag if isinstance(port_or_bag, dict) else {str(port_or_bag): [value]}
-        _check_injection(self, e, bag, self.my_model._inports)
-        t = self.t_l + e
+        self.inject_at(self.t_l + e, bag)
+
+    def inject_at(self, t: float, bag: Bag) -> None:
+        """Inject `bag` at absolute time `t`, `t_l <= t <= t_n`."""
+        _check_injection(self, t, bag, self.my_model._inports)
         if t == self.t_n:  # confluent: λ before δcon
             self.compute_input_output(t)
             self.show_output()
@@ -161,10 +218,10 @@ class _InstantGuard:
             )
 
 
-def _check_injection(sim: AtomicSimulator, e: float, bag: Bag, inports: list[str]) -> None:
-    if not 0 <= e or sim.t_l + e > sim.t_n:
+def _check_injection(sim: AtomicSimulator, t: float, bag: Bag, inports: list[str]) -> None:
+    if not sim.t_l <= t <= sim.t_n:
         raise ValueError(
-            f"input rejected at time {sim.t_l}: elapsed time {e} is outside "
+            f"input rejected at time {sim.t_l}: elapsed time {t - sim.t_l} is outside "
             f"[0, {sim.t_n - sim.t_l}]"
         )
     for port in bag:
