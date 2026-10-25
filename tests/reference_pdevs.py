@@ -132,7 +132,7 @@ def run(
     follows in its own round at the same t (the real-time runner's policy).
     """
     root = RefCoordinator(digraph)
-    root.init(0.0)
+    root.init(0)
     pending = list(injections)
     outputs = []
     while True:

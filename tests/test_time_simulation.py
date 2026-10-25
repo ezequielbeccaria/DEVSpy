@@ -40,7 +40,7 @@ def test_time_atomic_simulator_until_time_stops_at_bound():
     sim.simulate_until_time(5.0)
     # Ticks fire at t=1..5 internally (deltint bumps counter), so at least 5 ticks.
     assert t.ticks == 5
-    assert sim.get_tl() == 5.0
+    assert sim.t_l == 5.0
 
 
 def test_time_coordinator_routes_messages_and_stops_at_bound():
@@ -57,7 +57,7 @@ def test_time_coordinator_routes_messages_and_stops_at_bound():
 
     # Source emits at t=1, 2, 3 — sink should have received 3 events.
     assert len(snk.seen) == 3
-    assert coord.get_tl() == 3.0
+    assert coord.t_l == 3.0
 
 
 def test_stop_simulation_flag_halts_time_coordinator():
@@ -75,4 +75,4 @@ def test_stop_simulation_flag_halts_time_coordinator():
     # stop flag set before simulate reset it — so no iterations should complete.
     # The flag gets reset at start of simulate(), so this is a sanity check that
     # simulate still produces progress afterwards.
-    assert coord.get_tl() == 10.0
+    assert coord.t_l == 10.0

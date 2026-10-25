@@ -41,6 +41,15 @@ after the internal transition, so no time has elapsed in the new state.
 `cont(e)` or a clock variable advance twice.) Override it when the two
 transitions should not compose that way.
 
+### Time values
+
+Simultaneity is decided with `==` on time values, so float rounding can split
+events that should coincide: `0.1 + 0.1 + 0.1 != 0.3`, so a model stepping by
+0.1 and one stepping by 0.3 never fire together. Times start at the integer
+`0`, and the kernel only adds and compares them, so you can use `int` or
+`fractions.Fraction` for `sigma` and get exact time. `Fraction(1, 10) * 3 ==
+Fraction(3, 10)`. `math.inf` still means passive.
+
 ## Coupled models (`Digraph`)
 
 A `Digraph` holds a list of components (atomic or other digraphs) and a
