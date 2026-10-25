@@ -10,7 +10,7 @@ from devspy.modeling.entity import Pair
 from devspy.modeling.message import Message
 from devspy.simulation.atomic_simulator import AtomicSimulator
 from devspy.simulation.coupled_simulator import CoupledSimulator
-from devspy.util.logging import FULL, log
+from devspy.util.logging import FULL, is_enabled, log
 
 INFINITY = math.inf
 
@@ -36,6 +36,7 @@ class Coordinator(AtomicSimulator):
         self.input = Message()
         self.output = Message()
         self.e: float = 0.0
+        self.custom_show_state: bool = False
         coupled.set_coordinator(self)
         if set_simulators:
             self._set_simulators()
@@ -53,6 +54,7 @@ class Coordinator(AtomicSimulator):
                     f"Unsupported component type for coordinator: {type(component)!r}"
                 )
         self._tell_all_sims_set_mod_to_sim()
+        self.custom_show_state = any(sim.custom_show_state for sim in self.simulators)
 
     def _add_simulator(self, component: Atomic) -> None:
         sim = CoupledSimulator(component)
@@ -107,9 +109,9 @@ class Coordinator(AtomicSimulator):
 
     # --- time --------------------------------------------------------------
     def next_tn(self) -> float:
-        if not self.simulators:
-            return INFINITY
-        return min(sim.next_tn() for sim in self.simulators)
+        # Children keep t_n current after initialize/wrap_deltfunc, so no need
+        # to recurse down the hierarchy.
+        return min((sim.t_n for sim in self.simulators), default=INFINITY)
 
     def initialize(self, current_time: float = 0.0) -> None:
         for sim in self.simulators:
@@ -119,16 +121,19 @@ class Coordinator(AtomicSimulator):
 
     # --- transition --------------------------------------------------------
     def compute_input_output(self, time: float) -> None:
-        for sim in self.simulators:
+        # Only imminent children produce output; the rest would emit an empty bag.
+        imminent = [sim for sim in self.simulators if sim.t_n == time]
+        for sim in imminent:
             sim.compute_input_output(time)
-        for sim in self.simulators:
-            if hasattr(sim, "send_messages"):
-                sim.send_messages()  # type: ignore[attr-defined]
+        for sim in imminent:
+            sim.send_messages()  # type: ignore[attr-defined]
 
     def wrap_deltfunc(self, time: float, x: Optional[Message] = None) -> None:
         self._send_down_messages()
+        # Children with neither an internal event nor input have nothing to do.
         for sim in self.simulators:
-            sim.delt_func(time)
+            if sim.t_n == time or not sim.input.is_empty():
+                sim.delt_func(time)
         self.t_l = time
         self.t_n = self.next_tn()
         self.input = Message()
@@ -175,7 +180,8 @@ class Coordinator(AtomicSimulator):
         i = 1
         self.t_n = self.next_tn()
         while self.t_n < INFINITY and i <= num_iter:
-            log(f"ITERATION {i} ,time: {self.t_n}", FULL)
+            if is_enabled(FULL):
+                log(f"ITERATION {i} ,time: {self.t_n}", FULL)
             self.compute_input_output(self.t_n)
             self.show_output()
             self.wrap_deltfunc(self.t_n)
@@ -185,6 +191,8 @@ class Coordinator(AtomicSimulator):
 
     # --- state/output display ---------------------------------------------
     def show_model_state(self) -> None:
+        if not (self.custom_show_state or is_enabled(FULL)):
+            return
         for sim in self.simulators:
             sim.show_model_state()
 
