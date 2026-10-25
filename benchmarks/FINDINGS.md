@@ -529,6 +529,45 @@ their outputs at that instant were lost. On 0.3.0 as published in #6, 50 of the
 Neither TrackRailway nor RLDEVSpy injects, and `trace_diff.py --model-level`
 is unchanged (`ALL 3e6ae84e413300cc`).
 
+## Iteration 7: heap hygiene (branch `perf/heap-hygiene`)
+
+Three cheap kernel levers from the "what else" list (A4, A5, A7), now guarded by
+the oracle.
+
+| Lever | Change | Result | Kept? |
+|---|---|---|---|
+| A4: heap compaction | Rebuild the heap (`heapify` of the live `(t_n, index, version)`) when it grows past `2·n + 64` entries | DEVStone, RL and TrackRailway: no change (their heaps never fill with stale entries; TrackRailway peaks at 28). **Watchdog pattern: 28–34% faster, heap bounded, RSS 144 → 41 MiB** | Yes |
+| A5: skip unchanged reschedules | A receiver whose new `t_n` equals its old one keeps its heap entry: no version bump, no push | No change on the benchmarks. It saves a push and a stale entry for the classic busy server that does `cont(e)` on input | Yes (3 lines) |
+| A7: root routes split out of the λ inner loop | Separate `root_fanout` per simulator | Within ±1% on DEVStone and RL | **No, reverted** |
+
+**Watchdog benchmark** (`benchmarks/timeout_model.py`, `results/timeout.jsonl`).
+A broadcaster pings N watchdogs every 0.01, and each ping restarts the
+watchdog's timeout. Every restart leaves a stale entry behind, and stale entries
+only drain once simulated time passes them, so without compaction the heap
+holds about N·timeout/period entries.
+
+| N, timeout, end | before: wall, heap, RSS | after: wall, heap, RSS |
+|---|---|---|
+| 1000, 10, 20 | 2360 ms, 999,001, 144 MiB | 1548 ms, 2,001, 41 MiB |
+| 200, 50, 60 | 1058 ms, 1,000,001, 143 MiB | 771 ms, 201, 41 MiB |
+| 1000, 1, 20 | 2303 ms, 99,001, 41 MiB | 1536 ms, 2,001, 41 MiB |
+
+**PDEVS argument.** Both changes preserve the scheduler invariant: every
+simulator with t_n < ∞ has exactly one heap entry carrying its current version,
+and next_tn = min over those entries. A5 keeps a still-correct entry instead of
+replacing it with an identical one. A4 discards only entries whose version is
+stale, which `_pop`/`next_tn` would skip anyway. Which models are imminent, and
+when, does not change.
+
+**Validation.**
+
+- The oracle has a new variant with `_heap_limit = 0`, which rebuilds the heap
+  after every round (100 models). Without it the small random models never
+  trigger a rebuild, and a broken rebuild went unnoticed. `mutation_check.py`
+  now has 11 mutations, two of them aimed at these changes, and **all are caught**.
+- `trace_diff.py --model-level` is unchanged (`ALL 3e6ae84e413300cc`), and so
+  is the TrackRailway trajectory digest (`ALL 11cc8d93d6e2c704`).
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:

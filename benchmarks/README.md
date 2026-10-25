@@ -14,6 +14,8 @@ is identical.
 | `other_python/` | xDEVS.py and PythonPDEVS (minimal kernel) ports of both models, plus `bench.py` |
 | `cpp/` | adevs and Cadmium v2 ports of both models (`adevs_bench.cpp`, `cadmium_bench.cpp`) |
 | `trace_diff.py` | Records the full λ/δ trace of the examples, DEVStone and 200 random hierarchical models; diff the output of two engine versions to prove they are observationally identical |
+| `mutation_check.py` | Injects known kernel bugs one at a time and checks that the PDEVS oracle (`tests/test_reference_pdevs.py`) catches each |
+| `timeout_model.py` | Watchdog pattern (inputs keep pushing timeouts later), which stresses stale heap entries |
 | `run_devstone.py`, `run_process.py`, `run_rl.py` | Runners; append to `results/*.jsonl` |
 | `summarize.py` | Renders `results/*.jsonl` into `results/SUMMARY.md` |
 | `FINDINGS.md` | Running log of findings and conclusions |
