@@ -13,7 +13,7 @@ D = pathlib.Path("src/devspy/modeling/digraph.py")
 R = pathlib.Path("src/devspy/simulation/real_time.py")
 M = [
   ("confluent -> deltext", C, "model.deltcon(time - sim.t_l, x_bag)", "model.deltext(time - sim.t_l, x_bag)"),
-  ("default deltcon old e", A, "self.deltext(0.0, x)", "self.deltext(e, x)"),
+  ("default deltcon old e", A, "self.deltext(0, x)", "self.deltext(e, x)"),
   ("receivers not transitioned", C, "others = [s for s in receivers if s.t_n != time]", "others = []"),
   ("stale heap entries used", C, "if sim.version == version and tn == time:", "if tn == time:"),
   ("e measured from t_n", C, "model.deltext(time - sim.t_l, x_bag)", "model.deltext(sim.t_n - sim.t_l, x_bag)"),

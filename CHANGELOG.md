@@ -23,6 +23,10 @@ and fails loudly on invalid models.
 - `sim_inject` raises `ValueError` when `e` is outside `[0, t_n - t_l]` or a port
   is not a declared input port. It used to drop the input silently.
 
+- Removed the unused DEVSJAVA-style simulator getters `get_tn`, `equal_tn`,
+  `get_tl`, `get_output` and `get_input` (use the `t_n`, `t_l`, `output` and
+  `input` attributes), and `Atomic.string_state`.
+
 ### Fixed
 
 - `sim_inject` at exactly `t_n` (and any `wrap_deltfunc` without a preceding
@@ -81,6 +85,10 @@ and fails loudly on invalid models.
   called, so `DevsSuiteFacade(digraph).simulate_to_time(t)` no longer silently
   does nothing.
 - `Coordinator.stop_simulation()` (it was only on `TimeCoordinator`).
+- Exact time: simulation time starts at the integer `0` (the default `deltcon`
+  passes `0` too), so models using `int` or `Fraction` time never degrade to
+  floats.
+- `py.typed`: the package ships its type hints.
 
 ## 0.2.0
 

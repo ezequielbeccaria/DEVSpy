@@ -10,6 +10,7 @@ must match too.
 """
 
 import random
+from fractions import Fraction
 
 import pytest
 
@@ -22,9 +23,12 @@ def _multiset(bag):
 
 
 class RndAtomic(Atomic):
-    def __init__(self, name, rng: random.Random, log):
+    def __init__(self, name, rng: random.Random, log, exact=False):
         super().__init__(name)
-        self.delays = [rng.choice([0, 0.5, 1, 1, 2, 3]) for _ in range(6)]
+        if exact:  # thirds: inexact in binary floating point
+            self.delays = [Fraction(rng.choice([0, 1, 2, 3, 4, 7]), 3) for _ in range(6)]
+        else:
+            self.delays = [rng.choice([0, 0.5, 1, 1, 2, 3]) for _ in range(6)]
         self.n_in = rng.randint(1, 2)
         self.n_out = rng.randint(1, 2)
         self.custom_con = rng.random() < 0.5
@@ -36,7 +40,7 @@ class RndAtomic(Atomic):
             self.add_outport(f"o{i}")
 
     def initialize(self):
-        self.acc, self.k, self.clock = 0, 0, 0.0
+        self.acc, self.k, self.clock = 0, 0, 0
         self.log.clear()
         self.hold_in("active", self.delays[0] + 1)
 
@@ -114,7 +118,7 @@ class Spawner(RndAtomic):
             self.log.append((self.clock, "remove", victim.get_name()))
 
 
-def random_model(seed, spawners=False):
+def random_model(seed, spawners=False, exact=False):
     rng = random.Random(seed)
     log = {}
     counter = [0]
@@ -129,8 +133,10 @@ def random_model(seed, spawners=False):
             if depth > 0 and rng.random() < 0.35:
                 kids.append(build(depth - 1))
             else:
-                cls = Spawner if spawners and rng.random() < 0.3 else RndAtomic
-                kids.append(cls(f"A{counter[0]}", rng, log))
+                if spawners and rng.random() < 0.3:
+                    kids.append(Spawner(f"A{counter[0]}", rng, log))
+                else:
+                    kids.append(RndAtomic(f"A{counter[0]}", rng, log, exact=exact))
                 counter[0] += 1
         for k in kids:
             g.add(k)
@@ -350,6 +356,18 @@ def test_variable_structure_cases_actually_change_the_structure():
         DevsSuiteFacade(model).advance(40.0)
         changes += sum(1 for entries in log.values() for e in entries if e[1] in ("spawn", "remove"))
     assert changes > 200
+
+
+@pytest.mark.parametrize("seed", range(100))
+def test_exact_fraction_time_matches_reference(seed):
+    model, log = random_model(seed, exact=True)
+    outputs = DevsSuiteFacade(model).advance(40)
+    ref_model, ref_log = random_model(seed, exact=True)
+    ref_outputs = reference_pdevs.run(ref_model, 40)
+    assert log == ref_log
+    assert [(t, _multiset(y)) for t, y in outputs] == [(t, _multiset(y)) for t, y in ref_outputs]
+    times = [entry[0] for entries in log.values() for entry in entries]
+    assert all(isinstance(t, (int, Fraction)) for t in times)  # never degraded to float
 
 
 def test_reset_replays_like_a_fresh_reference_run():

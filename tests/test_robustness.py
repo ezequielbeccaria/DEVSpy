@@ -263,3 +263,38 @@ def test_default_deltcon_passes_zero_elapsed_time_to_deltext():
     f.simulate_to_time(2.0)
     # Both tick at 1.0 and 2.0: every input is confluent with the probe's own event.
     assert probe.elapsed == [0.0, 0.0]
+
+
+# --- exact time -------------------------------------------------------------------
+def test_fraction_time_keeps_simultaneous_events_simultaneous():
+    from fractions import Fraction
+
+    class Every(Atomic):
+        def __init__(self, name, step):
+            super().__init__(name)
+            self.add_outport("out")
+            self.step = step
+
+        def initialize(self):
+            self.hold_in("active", self.step)
+
+        def deltint(self):
+            self.hold_in("active", self.step)
+
+        def out(self):
+            return {"out": [self.get_name()]}
+
+    def run(tenth, three_tenths):
+        g = Digraph("g")
+        g.add_outport("out")
+        for m in (Every("fast", tenth), Every("slow", three_tenths)):
+            g.add(m)
+            g.add_coupling(m, "out", g, "out")
+        return DevsSuiteFacade(g).advance(three_tenths + tenth / 2)
+
+    # Floats: 0.1 + 0.1 + 0.1 != 0.3, so "fast" and "slow" fire in separate rounds.
+    assert len(run(0.1, 0.3)) == 4
+    # Fractions: exactly simultaneous, one round with both outputs.
+    out = run(Fraction(1, 10), Fraction(3, 10))
+    assert len(out) == 3
+    assert out[-1] == (Fraction(3, 10), {"out": ["fast", "slow"]})
