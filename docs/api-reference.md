@@ -140,7 +140,7 @@ You normally don't construct these directly — `DevsSuiteFacade` does it.
 | `Coordinator`          | `Digraph`                          | `simulate(num_iter)` — iteration-limited           |
 | `TimeAtomicSimulator`  | `Atomic`                           | `simulate(time)` (iteration-gated; see note), `simulate_until_time(t)`, `simulate_from_to(t0, t1)` |
 | `TimeCoordinator`      | `Digraph`                          | `simulate(max_sim_time)`, `simulate_from_to(t0, t1)`, `stop_simulation()` |
-| `CoupledSimulator`     | `Atomic` (inside a `Coordinator`)  | internal — handles message routing per atomic      |
+| `CoupledSimulator`     | `Atomic` (inside a `Coordinator`)  | internal — per-atomic state and precomputed routes |
 
 ### `TimeAtomicSimulator.simulate(time)` is iteration-gated
 
