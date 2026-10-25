@@ -18,6 +18,10 @@ def log(message: str, level: int = FULL) -> None:
     _logger.log(level, message)
 
 
+def is_enabled(level: int = FULL) -> bool:
+    return _logger.isEnabledFor(level)
+
+
 def set_level(level: int) -> None:
     _logger.setLevel(level)
 
