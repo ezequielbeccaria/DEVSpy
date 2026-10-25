@@ -65,9 +65,11 @@ class Atomic(IOBasicDevs):
         """External transition. `x` maps input port -> values received. Override."""
 
     def deltcon(self, e: float, x: Bag) -> None:
-        """Confluent transition. DEVSJAVA default: deltint then deltext."""
+        """Confluent transition. Parallel DEVS default (Chow & Zeigler):
+        δcon(s, x) = δext(δint(s), 0, x). The input arrives just after the internal
+        transition, so the elapsed time in the new state is 0, not `e`."""
         self.deltint()
-        self.deltext(e, x)
+        self.deltext(0.0, x)
 
     def out(self) -> Bag:
         """Output function: return {port: [values]} ({} for no output). Override."""

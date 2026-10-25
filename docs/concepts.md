@@ -34,12 +34,12 @@ self.phase_is(phase)         # bool
 
 ### Default `deltcon`
 
-If you don't override it, `deltcon = deltint() then deltext(e, x)`. Note that
-`e` is the elapsed time *before* `deltint` (i.e. `ta`), whereas Zeigler's
-PDEVS default uses `e = 0` after the internal transition. When your
-atomic tracks its own time (e.g., a clock variable or `cont(e)`), this default may
-double-advance — the GPT example's `Transducer` shows how to override
-explicitly.
+If you don't override it, `deltcon(e, x) = deltint(); deltext(0, x)`: the
+Parallel DEVS default δcon(s, x) = δext(δint(s), 0, x). The input arrives just
+after the internal transition, so no time has elapsed in the new state.
+(DEVSpy < 0.3 passed the pre-`deltint` `e`, as DEVSJAVA does, which made
+`cont(e)` or a clock variable advance twice.) Override it when the two
+transitions should not compose that way.
 
 ## Coupled models (`Digraph`)
 

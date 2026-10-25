@@ -5,10 +5,11 @@ from heapq import heappop, heappush
 from operator import attrgetter
 from typing import Optional
 
+from devspy.exceptions import ModelStructureError, ZeroTimeLoopError
 from devspy.modeling.atomic import Atomic
-from devspy.modeling.devs import Bag
+from devspy.modeling.devs import Bag, DevsBase
 from devspy.modeling.digraph import Digraph
-from devspy.simulation.atomic_simulator import AtomicSimulator
+from devspy.simulation.atomic_simulator import AtomicSimulator, _check_injection
 from devspy.simulation.coupled_simulator import CoupledSimulator, Fanout, Route
 from devspy.util.logging import FULL, is_enabled, log
 
@@ -28,6 +29,10 @@ class Coordinator(AtomicSimulator):
     imminent models IMM(t) (popped from a heap of t_n), routing of their
     outputs, then δ for IMM(t) ∪ INF(t), the imminents plus the models that
     received input. No other model is touched.
+
+    The network is validated while flattening (`ModelStructureError`), and a run
+    that spends more than `max_rounds_per_instant` rounds at a single time
+    raises `ZeroTimeLoopError` instead of hanging (`None` disables the check).
     """
 
     def __init__(self, coupled: Digraph, set_simulators: bool = True) -> None:
@@ -43,6 +48,7 @@ class Coordinator(AtomicSimulator):
         self._receivers: list[CoupledSimulator] = []
         self._imminent_time: float = -INFINITY
         self._ext_fanout: dict[str, list[Fanout]] = {}
+        self._stop_sim_flag = False
         coupled.set_coordinator(self)
         if set_simulators:
             self._flatten()
@@ -55,7 +61,7 @@ class Coordinator(AtomicSimulator):
 
         def visit(g: Digraph) -> None:
             g.set_coordinator(self)
-            self._children[id(g)] = {c.get_name(): c for c in g.get_components()}
+            self._children[id(g)] = _check_components(g)
             for c in g.get_components():
                 if isinstance(c, Atomic):
                     sim = CoupledSimulator(c, len(self.simulators))
@@ -74,50 +80,56 @@ class Coordinator(AtomicSimulator):
 
         def walk(g: Digraph) -> None:
             children = self._children[id(g)]
-            for (src_name, src_port), (dst_name, dst_port) in _sorted_pairs(g):
+            for pair in _sorted_pairs(g):
+                _check_coupling(g, children, pair)
+                (src_name, src_port), (dst_name, dst_port) = pair
                 child = children.get(src_name)
                 if isinstance(child, Atomic) and src_name != g.get_name():
                     routes = sim_of[id(child)].routes.setdefault(src_port, [])
-                    self._resolve(g, dst_name, dst_port, routes, from_input=False)
+                    self._resolve(g, dst_name, dst_port, routes)
             for c in g.get_components():
                 if isinstance(c, Digraph):
                     walk(c)
 
         walk(self.my_coupled)
         for sim in self.simulators:
+            for routes in sim.routes.values():
+                if any(dsim is sim for dsim, _ in routes):
+                    raise ModelStructureError(
+                        f"{sim.my_model.get_name()!r} is coupled to itself; a DEVS model "
+                        "cannot receive its own output (use an internal transition)"
+                    )
             sim.fanout = {port: _group(routes) for port, routes in sim.routes.items()}
         self.custom_show_state = any(sim.custom_show_state for sim in self.simulators)
 
-    def _resolve(
-        self, g: Digraph, name: str, port: str, out: list[Route], from_input: bool
-    ) -> None:
+    def _resolve(self, g: Digraph, name: str, port: str, out: list[Route]) -> None:
         """Follow a coupling destination `(name, port)` inside digraph `g` down/up to
-        atomic input ports (appended to `out`). `from_input` marks EIC context."""
+        atomic input ports (appended to `out`). Couplings are already validated."""
         child = self._children[id(g)].get(name) if name != g.get_name() else None
         if isinstance(child, Atomic):
             out.append((self._sim_of[id(child)], port))
         elif isinstance(child, Digraph):
             for dst_name, dst_port in _sorted_dsts(child, child.get_name(), port):
-                self._resolve(child, dst_name, dst_port, out, from_input=True)
-        elif from_input:
-            # An input coupled straight to an output (or to an unknown name) is not a
-            # valid DEVS coupling; dropped, as the hierarchical coordinator did.
-            return
+                self._resolve(child, dst_name, dst_port, out)
         elif g is self.my_coupled:
             out.append((None, port))  # EOC of the root: goes to self.output
         else:
             parent = self._parent[id(g)]
             for dst_name, dst_port in _sorted_dsts(parent, g.get_name(), port):
-                self._resolve(parent, dst_name, dst_port, out, from_input=False)
+                self._resolve(parent, dst_name, dst_port, out)
 
     def _fanout_for_input(self, port: str) -> list[Fanout]:
         fanout = self._ext_fanout.get(port)
         if fanout is None:
+            if port not in self.my_coupled._inports:
+                raise ModelStructureError(
+                    f"{self.my_coupled.get_name()!r} has no input port {port!r}"
+                )
             routes: list[Route] = []
             root = self.my_coupled
             for dst_name, dst_port in _sorted_dsts(root, root.get_name(), port):
-                self._resolve(root, dst_name, dst_port, routes, from_input=True)
-            fanout = _group([r for r in routes if r[0] is not None])
+                self._resolve(root, dst_name, dst_port, routes)
+            fanout = _group(routes)
             self._ext_fanout[port] = fanout
         return fanout
 
@@ -154,6 +166,7 @@ class Coordinator(AtomicSimulator):
         self.output = {}
         self.t_l = current_time
         self.t_n = self.next_tn()
+        self.initialized = True
 
     # --- transition --------------------------------------------------------
     def _pop(self, time: float) -> list[CoupledSimulator]:
@@ -272,19 +285,49 @@ class Coordinator(AtomicSimulator):
 
     # --- run loops ---------------------------------------------------------
     def simulate(self, num_iter: int) -> None:
+        """Run at most `num_iter` rounds."""
+        self._run(num_iter, INFINITY)
+
+    def _run(self, num_iter: float, max_time: float) -> None:
+        """Run rounds while `t_n <= max_time`, for at most `num_iter` rounds or until
+        `stop_simulation()`. Initializes first if `initialize()` was never called."""
+        if not self.initialized:
+            self.initialize(0.0)
+        self._stop_sim_flag = False
+        logging_on = is_enabled(FULL)
+        show_state = self.custom_show_state or logging_on
+        run_round = self._round
+        limit = self.max_rounds_per_instant
+        if limit is None:
+            limit = INFINITY
+        last_t, same = -INFINITY, 0
         i = 1
-        self.t_n = self.next_tn()
-        while self.t_n < INFINITY and i <= num_iter:
-            if is_enabled(FULL):
-                log(f"ITERATION {i} ,time: {self.t_n}", FULL)
-            self._round(self.t_n)
+        t = self.t_n = self.next_tn()
+        while t < INFINITY and t <= max_time and i <= num_iter and not self._stop_sim_flag:
+            if logging_on:
+                log(f"ITERATION {i} ,time: {t}", FULL)
+            if t == last_t:
+                same += 1
+                if same > limit:
+                    raise ZeroTimeLoopError(
+                        f"more than {limit} rounds at time {t}: the model does not advance "
+                        "time (raise max_rounds_per_instant if this is legitimate)"
+                    )
+            else:
+                last_t, same = t, 1
+            run_round(t)
             if self.output:
                 self.show_output()
                 self.output = {}
-            if self.custom_show_state:
+            if show_state:
                 self.show_model_state()
             i += 1
+            t = self.t_n
         log(f"Terminated Normally at ITERATION {i} ,time: {self.t_n}", FULL)
+
+    def stop_simulation(self) -> None:
+        """Make the running loop return after the current round."""
+        self._stop_sim_flag = True
 
     # --- state/output display ---------------------------------------------
     def show_model_state(self) -> None:
@@ -294,13 +337,16 @@ class Coordinator(AtomicSimulator):
             sim.show_model_state()
 
     def sim_inject(self, e: float, port_or_bag: str | Bag, value=None) -> None:
-        """Inject `value` on root input `port` (or a whole bag) `e` after the last event."""
+        """Inject `value` on root input `port` (or a whole bag) `e` after the last event.
+
+        Raises `ValueError` unless `0 <= e <= t_n - t_l`, or if a port is undeclared.
+        """
         bag = port_or_bag if isinstance(port_or_bag, dict) else {str(port_or_bag): [value]}
-        t = self.t_l + e
-        if t <= self.next_tn():
-            self.input = {port: list(values) for port, values in bag.items()}
-            self.wrap_deltfunc(t)
-            self.show_model_state()
+        self.t_n = self.next_tn()
+        _check_injection(self, e, bag, self.my_coupled._inports)
+        self.input = {port: list(values) for port, values in bag.items()}
+        self.wrap_deltfunc(self.t_l + e)
+        self.show_model_state()
 
 
 def _group(routes: list[Route]) -> list[Fanout]:
@@ -312,6 +358,48 @@ def _group(routes: list[Route]) -> list[Fanout]:
 
 
 _by_index = attrgetter("index")
+
+
+def _check_components(g: Digraph) -> dict[str, DevsBase]:
+    """Map component name -> component, rejecting duplicate names (couplings are
+    keyed by name) and names that shadow the digraph's own."""
+    children: dict[str, DevsBase] = {}
+    for c in g.get_components():
+        name = c.get_name()
+        if name in children or name == g.get_name():
+            raise ModelStructureError(
+                f"digraph {g.get_name()!r}: duplicate component name {name!r}"
+            )
+        children[name] = c
+    return children
+
+
+def _check_coupling(g: Digraph, children: dict[str, DevsBase], pair) -> None:
+    """A coupling of `g` must be EIC (g.in -> child.in), IC (child.out -> child.in)
+    or EOC (child.out -> g.out), between declared ports."""
+    (src_name, src_port), (dst_name, dst_port) = pair
+    me = g.get_name()
+    where = f"digraph {me!r}: coupling {src_name}.{src_port} -> {dst_name}.{dst_port}"
+    if src_name == me:
+        if dst_name == me:
+            raise ModelStructureError(f"{where} connects an input straight to an output")
+        src_ports, src_kind = g._inports, "input"
+    else:
+        src = children.get(src_name)
+        if src is None:
+            raise ModelStructureError(f"{where}: unknown component {src_name!r}")
+        src_ports, src_kind = src._outports, "output"
+    if dst_name == me:
+        dst_ports, dst_kind = g._outports, "output"
+    else:
+        dst = children.get(dst_name)
+        if dst is None:
+            raise ModelStructureError(f"{where}: unknown component {dst_name!r}")
+        dst_ports, dst_kind = dst._inports, "input"
+    if src_port not in src_ports:
+        raise ModelStructureError(f"{where}: {src_name!r} has no {src_kind} port {src_port!r}")
+    if dst_port not in dst_ports:
+        raise ModelStructureError(f"{where}: {dst_name!r} has no {dst_kind} port {dst_port!r}")
 
 
 def _sorted_pairs(g: Digraph):

@@ -1,6 +1,8 @@
 """Behaviour of the flattened coordinator across hierarchy levels."""
 
-from devspy import Atomic, DevsSuiteFacade, Digraph
+import pytest
+
+from devspy import Atomic, DevsSuiteFacade, Digraph, ModelStructureError
 
 
 class Pulse(Atomic):
@@ -130,19 +132,13 @@ def test_deep_cloning_snapshot_runs_independently():
     assert clone_rec.seen == rec.seen == [(1.0, 0), (2.0, 1), (3.0, 2), (4.0, 3), (5.0, 4)]
 
 
-def test_input_coupled_straight_to_output_is_ignored():
-    rec = Recorder("r")
+def test_input_coupled_straight_to_output_is_rejected():
     inner = Digraph("inner")
     inner.add_inport("in")
     inner.add_outport("out")
-    inner.add(rec)
+    inner.add(Recorder("r"))
     inner.add_coupling(inner, "in", inner, "out")  # not a valid DEVS coupling
-    pulse = Pulse("p", n=1)
     top = Digraph("top")
-    top.add(pulse)
     top.add(inner)
-    top.add_coupling(pulse, "out", inner, "in")
-    f = DevsSuiteFacade(top)
-    f.reset()
-    f.simulate_to_time(5.0)
-    assert rec.seen == []
+    with pytest.raises(ModelStructureError, match="input straight to an output"):
+        DevsSuiteFacade(top)
