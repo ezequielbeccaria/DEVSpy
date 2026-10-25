@@ -397,6 +397,75 @@ random agent, 7200 s episodes, `results/trackrailway.jsonl`):
 | **TrackRailway modelling** | Kernel ≈ 34% of a real episode. TrackRailway models ≈ 48%. Each train emits an event on every movement tick (~15.6k events/episode), and the observer processes every one. | The biggest remaining win is in the model, not the engine: emit only on section changes or arrivals and compute positions analytically. This change belongs in TrackRailway. |
 | `phase_is()` | 2.1M calls (4.6%) in TrackRailway | Use `self.phase == "x"` in hot model code. |
 
+## Iteration 5: robustness and PDEVS defaults (branch `feat/robustness`, 0.3.0)
+
+No performance goal. The aim is to fail loudly on invalid models and to drop
+the DEVSJAVA parity quirks, which the project no longer needs to mirror. All of
+it is breaking (see `CHANGELOG.md`), hence 0.3.0.
+
+| Change | Before | After |
+|---|---|---|
+| Network validation in `_flatten` | Couplings to unknown names or undeclared ports were dropped or routed anyway; `in -> out` was dropped silently; duplicate names made routing ambiguous | `ModelStructureError` |
+| Zero-time loop | A `ta() == 0` feedback loop hung the process | `ZeroTimeLoopError` after `max_rounds_per_instant` (100 000) rounds at one time |
+| Run without `initialize()` | `DevsSuiteFacade(digraph).simulate_to_time(t)` silently did nothing (empty heap) | The loop initializes first |
+| `TimeAtomicSimulator.simulate(t)` | Compared the iteration counter with `t` | Runs events with `t_n <= t` |
+| Default `deltcon` | `deltint(); deltext(e, x)` with the pre-`deltint` `e` | `deltint(); deltext(0, x)` |
+| `sim_inject` out of range or on an undeclared port | Dropped silently (or logged) | `ValueError` |
+
+### Formal argument
+
+- **Validation** only rejects networks that are not coupled DEVS models. In
+  the coupled-model definition (Zeigler, Praehofer & Kim 2000; Chow 1996),
+  EIC ⊆ X_N × ∪X_d, EOC ⊆ ∪Y_d × Y_N and IC ⊆ ∪Y_a × ∪X_b with a ≠ b, all
+  between the declared port sets. Self-influence is excluded (i ∉ I_i). The
+  check is applied to the *flattened* network, so a digraph-level coupling
+  `d -> d` is accepted when it only connects distinct atomics inside `d`, which
+  is what closure under coupling gives. Valid networks are flattened exactly as
+  before.
+- **The zero-time guard** concerns legitimacy: a DEVS model is legitimate iff
+  every finite interval contains finitely many transitions. More than N
+  rounds at one instant is a cheap witness that a model is probably
+  illegitimate. A legitimate model with at most N simultaneous rounds runs
+  unchanged. The bound is configurable.
+- **Injection bounds** are the abstract simulator's own synchronization check:
+  an external event at t requires t_l ≤ t ≤ t_n (Zeigler's simulator reports
+  a "bad synchronization" error otherwise).
+- **Default `deltcon`**: Chow & Zeigler's PDEVS default is
+  δcon(s, x) = δext(δint(s), 0, x). After δint the model is in a new state
+  entered at t, so the elapsed time in it is 0. Passing the old `e` made a
+  `cont(e)` subtract time already consumed by the internal transition.
+- **Time-gated atomic runs and lazy initialization** follow the abstract
+  simulator's root loop (`initialize`, then rounds while t_n ≤ t_end).
+
+### Validation
+
+- `trace_diff.py --model-level`: of the 206 cases (48,617 events), only
+  `gpt` changes, and within it exactly one event:
+  `20 generator ext e=2 x=[stop=1]` → `18 generator ext e=0 x=[stop=1]`. This
+  is the generator's confluent transition at t=20 (its own event plus the
+  transducer's `stop`) through the default `deltcon`. The tool prints
+  `t_l + e`, which is why the time column also moves. The generator ignores
+  `e`, so the outputs and later transitions are identical. All other cases,
+  including the 200 random hierarchical models with ties and zero-time
+  advances, hash the same. New `ALL 3e6ae84e413300cc`, which is the expected
+  change.
+- Example outputs (`gpt_model`, `mm1_queue`, `manufacturing_line`) are
+  byte-identical. The only example change is that the GPT generator now
+  declares its `stop` input port, which validation required.
+- **Downstream:** RLDEVSpy has 231/231 passing, with no source changes needed.
+  TrackRailway is still at 106 passed with the same 4 pre-existing failures. The
+  end-to-end trajectory digest is unchanged, `ALL 11cc8d93d6e2c704`.
+- New `tests/test_robustness.py` (15 tests) covers each rule.
+
+### Cost
+
+The guard adds one float comparison per round in `_run`. Measured against
+`23c78d0` (`results/devstone.jsonl` with tag `it5-robustness`, and
+`results/rl.jsonl`), the difference is within noise: DEVStone 20×20 311.8 →
+314.9 ms, 3×50 85.7 → 86.4 ms; RL m=8 3.24 → 3.22–3.32 ms/ep; m=64
+27.1 → 26.6–26.8 ms/ep; P=16 2869 → 2861 eps/s. Decisions and rewards are
+identical.
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:

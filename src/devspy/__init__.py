@@ -1,4 +1,4 @@
-from devspy.exceptions import NoModelSetError
+from devspy.exceptions import ModelStructureError, NoModelSetError, ZeroTimeLoopError
 from devspy.facade import DevsSuiteFacade
 from devspy.modeling import (
     Atomic,
@@ -29,8 +29,10 @@ __all__ = [
     "DevsSuiteFacade",
     "Digraph",
     "IOBasicDevs",
+    "ModelStructureError",
     "NoModelSetError",
     "TimeAtomicSimulator",
     "TimeCoordinator",
+    "ZeroTimeLoopError",
 ]
-__version__ = "0.2.0"
+__version__ = "0.3.0"

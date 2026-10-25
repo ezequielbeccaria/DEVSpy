@@ -11,7 +11,7 @@ from devspy.simulation.time_coordinator import TimeCoordinator
 
 
 class DevsSuiteFacade:
-    """Ports `facade.DevsSuiteFacade`.
+    """Started as a port of DEVSJAVA's `facade.DevsSuiteFacade`.
 
     Entry point for headless DEVS simulation. Accepts an atomic or digraph
     model (or a preconfigured `TimeCoordinator`), and exposes iteration- and
@@ -31,7 +31,9 @@ class DevsSuiteFacade:
         if isinstance(model, Atomic):
             self.set_atomic_model(model)
         elif isinstance(model, Digraph):
-            self.set_digraph_model(model, initialize=False)  # parity with Java
+            # Not initialized here: the first reset() or simulate_*() call does it,
+            # so the usual "construct, reset(), simulate" initializes exactly once.
+            self.set_digraph_model(model, initialize=False)
         elif isinstance(model, TimeCoordinator):
             self._coordinator = model
         else:

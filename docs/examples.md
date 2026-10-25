@@ -17,9 +17,10 @@ The canonical DEVS smoke test.
 - **Processor**: takes `PROCESS_TIME` to complete a job; drops jobs that arrive while busy.
 - **Transducer**: observes arrivals and completions; sends a `stop` signal back to the generator after `OBS_TIME`.
 
-A `Transducer.deltcon` is overridden explicitly to avoid the default
-`deltint + deltext` double-advancing the internal clock (the GPT example is
-where this issue was first hit).
+`Transducer.deltcon` is overridden explicitly. Since 0.3 the default
+(`deltint(); deltext(0, x)`) does the same thing; DEVSpy < 0.3 passed the
+pre-`deltint` `e` and double-advanced the transducer's clock (the GPT example is
+where this was first hit).
 
 Output: prints two lists of `(time, job_id)` for arrivals and completions.
 
