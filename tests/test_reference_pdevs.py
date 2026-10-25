@@ -75,7 +75,46 @@ class RndAtomic(Atomic):
         return {f"o{i}": [self.acc + self.k + i] for i in range(self.n_out)}
 
 
-def random_model(seed):
+class Spawner(RndAtomic):
+    """On internal transitions, sometimes adds a coupled sibling or removes one."""
+
+    def __init__(self, name, rng, log):
+        super().__init__(name, rng, log)
+        self.logroot = log
+
+    def initialize(self):
+        super().initialize()
+        self.srng = random.Random(f"spawn-{self.get_name()}")
+        self.spawned = 0
+
+    def deltint(self):
+        super().deltint()
+        parent = self.get_parent()
+        sibs = sorted(
+            (c for c in parent.get_components() if isinstance(c, Atomic) and c is not self),
+            key=lambda c: c.get_name(),
+        )
+        r = self.srng.random()
+        if r < 0.3 and self.spawned < 3:
+            name = f"{self.get_name()}s{self.spawned}"
+            self.spawned += 1
+            child = RndAtomic(name, random.Random(name), self.logroot)
+            self.add_model(child)
+            for sib in sibs:
+                if self.srng.random() < 0.5:
+                    self.add_coupling(sib, self.srng.choice(sib.get_outports()),
+                                      child, self.srng.choice(child.get_inports()))
+                if self.srng.random() < 0.5:
+                    self.add_coupling(child, self.srng.choice(child.get_outports()),
+                                      sib, self.srng.choice(sib.get_inports()))
+            self.log.append((self.clock, "spawn", name))
+        elif r < 0.45 and sibs:
+            victim = self.srng.choice(sibs)
+            self.remove_model(victim)
+            self.log.append((self.clock, "remove", victim.get_name()))
+
+
+def random_model(seed, spawners=False):
     rng = random.Random(seed)
     log = {}
     counter = [0]
@@ -90,7 +129,8 @@ def random_model(seed):
             if depth > 0 and rng.random() < 0.35:
                 kids.append(build(depth - 1))
             else:
-                kids.append(RndAtomic(f"A{counter[0]}", rng, log))
+                cls = Spawner if spawners and rng.random() < 0.3 else RndAtomic
+                kids.append(cls(f"A{counter[0]}", rng, log))
                 counter[0] += 1
         for k in kids:
             g.add(k)
@@ -285,6 +325,31 @@ def test_observer_sees_every_transition_without_perturbing(seed):
                 expected.append((entry[0], entry[1]))
         assert [(t, kind) for t, kind, _, _ in seen] == expected
     assert all(y for _, _, y in rec.outputs)
+
+
+@pytest.mark.parametrize("seed", range(200))
+def test_variable_structure_matches_reference(seed):
+    model, log = random_model(seed, spawners=True)
+    f = DevsSuiteFacade(_with_root_input(model))
+    outputs = []
+    for t, bag in _injections(seed):
+        outputs += f.inject(bag, at=t)
+    outputs += f.advance(40.0)
+
+    ref_model, ref_log = random_model(seed, spawners=True)
+    ref_outputs = reference_pdevs.run(_with_root_input(ref_model), 40.0, _injections(seed))
+    assert log == ref_log
+    assert [(t, _multiset(y)) for t, y in outputs] == [(t, _multiset(y)) for t, y in ref_outputs]
+
+
+def test_variable_structure_cases_actually_change_the_structure():
+    changes = 0
+    for seed in range(200):
+        _, log = random_model(seed, spawners=True)
+        model, log = random_model(seed, spawners=True)
+        DevsSuiteFacade(model).advance(40.0)
+        changes += sum(1 for entries in log.values() for e in entries if e[1] in ("spawn", "remove"))
+    assert changes > 200
 
 
 def test_reset_replays_like_a_fresh_reference_run():

@@ -54,6 +54,29 @@ class Atomic(IOBasicDevs):
         if self.sigma < INFINITY:
             self.sigma -= e
 
+    # --- variable structure (applied after the current round) ------------
+    def add_model(self, model: IOBasicDevs) -> None:
+        """Add `model` to this model's parent digraph. It starts at the current
+        time once the round ends."""
+        self._parent_digraph().add(model)
+
+    def remove_model(self, model: IOBasicDevs | str) -> None:
+        """Remove `model` (or the sibling with that name) and its couplings."""
+        self._parent_digraph().remove(model)
+
+    def add_coupling(self, src, src_port: str, dst, dst_port: str) -> None:
+        """Couple two components (models or names) of the parent digraph."""
+        self._parent_digraph().add_coupling(src, src_port, dst, dst_port)
+
+    def remove_coupling(self, src, src_port: str, dst, dst_port: str) -> None:
+        self._parent_digraph().remove_coupling(src, src_port, dst, dst_port)
+
+    def _parent_digraph(self):
+        parent = self.get_parent()
+        if parent is None:
+            raise RuntimeError(f"{self.get_name()!r} is not inside a digraph")
+        return parent
+
     # --- DEVS contract -----------------------------------------------------
     def ta(self) -> float:
         return self.sigma
