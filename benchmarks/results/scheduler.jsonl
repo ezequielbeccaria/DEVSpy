@@ -1,0 +1,18 @@
+{"case": "devstone 20x20", "rev": "91bcb6f", "heap": 334.06, "scan": 273.31, "auto": 286.46}
+{"case": "devstone 3x50", "rev": "91bcb6f", "heap": 91.06, "scan": 77.63, "auto": 81.72}
+{"case": "devstone 200x1", "rev": "91bcb6f", "heap": 343.99, "scan": 290.0, "auto": 295.07}
+{"case": "rl m=8 x200", "rev": "91bcb6f", "heap": 598.34, "scan": 606.94, "auto": 603.86}
+{"case": "rl m=64 x30", "rev": "91bcb6f", "heap": 639.85, "scan": 623.26, "auto": 629.55}
+{"case": "watchdog 1000", "rev": "91bcb6f", "heap": 413.03, "scan": 323.54, "auto": 372.68}
+{"case": "sparse n=64", "rev": "91bcb6f", "heap": 28.99, "scan": 94.22, "auto": 27.7}
+{"case": "sparse n=1024", "rev": "91bcb6f", "heap": 32.26, "scan": 1004.11, "auto": 30.82}
+{"case": "sparse n=4096", "rev": "91bcb6f", "heap": 33.76, "scan": 4147.66, "auto": 32.76}
+{"case": "devstone 20x20", "rev": "91bcb6f", "heap": 330.63, "scan": 270.86, "auto": 275.64}
+{"case": "devstone 3x50", "rev": "91bcb6f", "heap": 89.77, "scan": 77.31, "auto": 78.28}
+{"case": "devstone 200x1", "rev": "91bcb6f", "heap": 342.61, "scan": 284.11, "auto": 286.92}
+{"case": "rl m=8 x200", "rev": "91bcb6f", "heap": 595.13, "scan": 606.36, "auto": 601.51}
+{"case": "rl m=64 x30", "rev": "91bcb6f", "heap": 627.77, "scan": 617.12, "auto": 613.53}
+{"case": "watchdog 1000", "rev": "91bcb6f", "heap": 411.59, "scan": 321.05, "auto": 333.1}
+{"case": "sparse n=64", "rev": "91bcb6f", "heap": 28.19, "scan": 93.58, "auto": 27.33}
+{"case": "sparse n=1024", "rev": "91bcb6f", "heap": 31.96, "scan": 1013.27, "auto": 30.97}
+{"case": "sparse n=4096", "rev": "91bcb6f", "heap": 33.58, "scan": 4099.56, "auto": 32.55}
