@@ -72,29 +72,35 @@ g.add_coupling(g, "in", comp_a, "in_port")     # external input → internal
 g.add_coupling(comp_b, "out_port", g, "out")   # internal → external output
 ```
 
+Every port used in a coupling must be declared with `add_inport` or
+`add_outport`, and component names must be unique within a digraph. An invalid
+network raises `ModelStructureError` when the simulator is built (see
+[Correctness](correctness.md)).
+
 ## Simulators
 
-DEVSpy provides three simulator types — usually you don't touch them
-directly because `DevsSuiteFacade` wraps the right one.
+You rarely touch simulators directly: `DevsSuiteFacade` wraps the right one.
 
-| Class                  | Wraps             | Public methods                                         |
+| Class                  | Wraps             | Main methods                                           |
 |------------------------|-------------------|--------------------------------------------------------|
 | `AtomicSimulator`      | one `Atomic`      | iteration-limited `simulate(num_iter)`                 |
-| `Coordinator`          | one `Digraph`     | iteration-limited `simulate(num_iter)`                 |
-| `TimeAtomicSimulator`  | one `Atomic`      | `simulate(t)`, `simulate_until_time(t)`                |
-| `TimeCoordinator`      | one `Digraph`     | `simulate(max_sim_time)`, `stop_simulation()`          |
-| `CoupledSimulator`     | atomic-in-digraph | internal — per-atomic state driven by `Coordinator`    |
+| `Coordinator`          | one `Digraph`     | iteration-limited `simulate(num_iter)`, `stop_simulation()` |
+| `TimeAtomicSimulator`  | one `Atomic`      | `simulate(t)`: every event with `t_n <= t`             |
+| `TimeCoordinator`      | one `Digraph`     | `simulate(t)`: every round with `t_n <= t`             |
+| `CoupledSimulator`     | atomic-in-digraph | internal: per-atomic state driven by `Coordinator`     |
 
 A `Coordinator` flattens the whole `Digraph` hierarchy when it is built. Every
 coupling path, however many levels it crosses, becomes a direct route from an
 atomic output port to atomic input ports. Nesting digraphs therefore costs
-nothing at run time.
+nothing at run time. If the structure changes during a run, the network is
+re-flattened after the current round (see
+[Variable structure](variable-structure.md)).
 
 ## DEVS round in pictures
 
 For each event time `t` the simulator does:
 
-1. **`compute_input_output(t)`** — the imminent components (`t_n == t`, taken from an event heap) emit via `out()`.
+1. **`compute_input_output(t)`**: the imminent components emit via `out()`. These are the models with `t_n == t`, found with a heap or a linear scan; see [schedulers](running.md#schedulers).
 2. **route messages** — outputs follow the precomputed routes into the receivers' input bags.
 3. **`wrap_deltfunc(t)`** — the imminent components and the receivers run the appropriate transition; no other component is touched:
    - input bag empty *and* `t == t_n` → `deltint()`
@@ -102,7 +108,8 @@ For each event time `t` the simulator does:
    - input bag non-empty *and* `t != t_n` → `deltext(e, x)`
 4. **schedule next** — `t_l = t`, `t_n = t + ta()`.
 
-`TimeCoordinator.simulate(t)` keeps doing this while `t_n <= t`.
+`TimeCoordinator.simulate(t)` keeps doing this while `t_n <= t`. More than
+100 000 rounds at a single time raise `ZeroTimeLoopError`.
 
 ## Further reading
 

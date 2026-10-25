@@ -1,7 +1,8 @@
 # Examples
 
-Three runnable scripts live in `examples/`. Each is a complete, self-contained
-DEVS model with a `run()` function and a `__main__` entry point.
+Six runnable scripts live in `examples/`. Each is a complete, self-contained
+DEVS model with a `run()` function and a `__main__` entry point, and each has
+tests under `tests/`.
 
 ```bash
 poetry run python examples/<script>.py
@@ -98,3 +99,66 @@ piles up because it is the bottleneck; Station3 is starved.
 The tests (`tests/test_manufacturing_line.py`) assert that the bottleneck
 moves correctly when the slowest station changes, and that an underloaded
 line tracks the arrival rate.
+
+---
+
+## 4. `gym_loop.py`: an agent outside the model
+
+A water tank with random inflow and an outflow valve. The **agent is ordinary
+Python code** outside the DEVS model, as in a gym-style RL loop:
+
+```python
+[(t, obs)] = facade.advance(stop_on_output=True)   # run to the next observation
+facade.inject("valve", policy(obs["level"][0]))    # answer at the same instant
+```
+
+After a warm-up the script takes a `snapshot()`, then runs two policies
+(proportional and bang-bang) from that same state with `restore()`, and
+compares how well they hold the level at 50:
+
+```
+from the same checkpoint at t=10, 50 steps each (ends at t=60.0):
+  mean |level - 50.0| proportional: 6.87
+  mean |level - 50.0| bang-bang   : 8.36
+```
+
+---
+
+## 5. `autoscaling.py`: variable structure
+
+A dispatcher receives bursty jobs and keeps a queue. When the queue grows it
+adds a `Server` model and couples it (`add_model`, `add_coupling`). When a
+server stays idle for a while, it removes it (`remove_model`). The pool grows
+to 6 servers in each burst and shrinks back to 1 in the quiet phases:
+
+```
+servers created: 10, peak pool: 6, final pool: 1
+  t=  0.048  servers=1
+  t=  2.032  servers=2
+  ...
+  t= 29.385  servers=1
+```
+
+Changes made inside a transition take effect after the current round, as in
+DSDEVS (see [Variable structure](variable-structure.md)).
+
+---
+
+## 6. `real_time_thermostat.py`: real time, threads, activities
+
+A thermostat runs paced by the wall clock (`speed=20`: one simulated minute
+takes 50 ms). A **sensor thread** posts temperature readings with
+`runner.post(...)`. The thermostat switches a heater with hysteresis, and
+every five readings it starts an **activity**: a slow moving average computed
+in a thread, whose result comes back as input:
+
+```
+  t=  4.21 min  {'average': [20.83]}
+  t= 12.03 min  {'heater': ['on']}
+  t= 22.05 min  {'heater': ['off']}
+  ...
+30 simulated minutes in 1.50 s of wall time
+```
+
+The times vary slightly from run to run because they follow the real clock
+(see [Real time](real-time.md)).

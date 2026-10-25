@@ -15,7 +15,7 @@ poetry run pytest tests/test_facade.py      # one file
 poetry run pytest -k mm1                    # by keyword / single test name
 poetry run ruff check src tests             # lint (line-length 100, target py39)
 poetry run ruff format src tests
-poetry run python examples/mm1_queue.py     # also gpt_model.py, manufacturing_line.py
+poetry run python examples/mm1_queue.py     # also gpt_model, manufacturing_line, gym_loop, autoscaling, real_time_thermostat
 poetry build
 ```
 
@@ -56,4 +56,4 @@ The code is split into two parallel trees: **modeling** (what the user writes) a
 - The hot loop is `Coordinator.compute_input_output` / `wrap_deltfunc`. Keep it simple and avoid speculative abstractions. Any change to a simulator's `t_n` must bump `version` and, in heap mode, push a new heap entry; stale entries are skipped. Only imminent models get λ, and only imminent models or those with input get δ. Reset (`initialize`) must only call `initialize()` on atomics, in component order: RLDEVSpy-TrackRailway relies on that order.
 - Never format log messages unconditionally in hot paths. Guard them with `devspy.util.logging.is_enabled(level)`.
 - Tests are one file per topic under `tests/`. Example-driven tests import the example's `run()` and assert on the event traces it records. Some do `from examples.gpt_model import run` (this relies on pytest putting the repo root on `sys.path`). Others insert `examples/` into `sys.path` first. `tests/test_parity_gpt.py` is the reference trace for the Generator → Processor → Transducer model.
-- User-facing docs are in `docs/` (concepts, API reference, examples). Update `docs/api-reference.md` when the public API in `src/devspy/__init__.py` changes.
+- User-facing docs are in `docs/`: guides (getting-started, concepts, running, variable-structure, real-time), plus api-reference, examples, correctness, performance and contributing. Update `docs/api-reference.md` and the matching guide when the public API in `src/devspy/__init__.py` changes, and add a `CHANGELOG.md` entry.
