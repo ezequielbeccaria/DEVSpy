@@ -6,7 +6,8 @@ Public symbols are re-exported from the top-level `devspy` package.
 from devspy import (
     Atomic, Digraph, Coupled, Couprel, Bag,
     DevsBase, IOBasicDevs,
-    DevsSuiteFacade, NoModelSetError, ModelStructureError, ZeroTimeLoopError,
+    DevsSuiteFacade, Observer,
+    NoModelSetError, ModelStructureError, ZeroTimeLoopError,
     AtomicSimulator, CoupledSimulator, Coordinator,
     TimeAtomicSimulator, TimeCoordinator,
 )
@@ -34,11 +35,41 @@ Accepts an `Atomic`, a `Digraph`, a preconfigured `TimeCoordinator`, or `None`
 | `simulate_iterations(n)`                 | Runs the iteration-count simulator (`Coordinator.simulate(n)`). |
 | `simulate_to_time(t)`                    | Runs every event with `t_n <= t` (atomic and digraph models alike). |
 | `simulate_to_time(t0, t1)`               | Initializes at `t0` then simulates to `t1`.                     |
-| `deep_cloning()`                         | Returns a `copy.deepcopy` of the underlying simulator.          |
+| `advance(until=inf, stop_on_output=False)` | Runs every round with `t_n <= until` and **returns** the root outputs as `[(t, bag), ...]` instead of printing them. With `stop_on_output=True` it returns after the first round with root output. |
+| `inject(port, value, at=None)` / `inject({port: [values]}, at=None)` | Runs the rounds strictly before `at` (default: `time`), then injects the input at `at`. If `at` is also an internal event time, both are one confluent round (λ of the imminents first). Returns the root outputs of the rounds it ran. |
+| `time`, `next_event_time`                | Time of the last event or injection; time of the next internal event (`inf` if none). |
+| `add_observer(obs)`, `remove_observer(obs)` | Attach or detach an `Observer` (see below).                  |
+| `snapshot()`, `restore(snapshot)`        | Copy the whole simulation state, and later put it back **in place**: the model objects stay the same, while their attributes (and anything they reference except other models) are copied. A snapshot can be restored many times. |
+| `deep_cloning()`                         | Returns a `copy.deepcopy` of the underlying simulator (new model objects). |
 | `is_simulation_done()`                   | True once a `simulate_*` call has returned.                     |
 | `get_simulator()`                        | The underlying simulator instance.                              |
 
 Raises `NoModelSetError` if a `simulate_*` is called before any model is set.
+
+### Driving a simulation from outside (gym-style)
+
+```python
+f = DevsSuiteFacade(env)                  # a Digraph with input "action", output "obs"
+obs = f.advance(stop_on_output=True)      # [(t, {"obs": [...]})]
+f.inject("action", a)                     # at f.time, i.e. e = 0 after the observation
+obs = f.advance(stop_on_output=True)
+checkpoint = f.snapshot()                 # ... later: f.restore(checkpoint)
+```
+
+### `Observer`
+
+Subclass `devspy.Observer` and override what you need:
+
+```python
+class Trace(Observer):
+    def on_output(self, t, model, y): ...                 # a model's λ produced y
+    def on_transition(self, t, model, kind, e, x): ...    # kind: "int" | "ext" | "con"
+```
+
+`on_transition` runs right after the transition. `e` is the elapsed time the
+model received; for `"int"` it is the time since the model's last transition.
+`x` is its input bag (`{}` for `"int"`). With no observer attached the kernel
+only pays an emptiness check.
 
 ---
 

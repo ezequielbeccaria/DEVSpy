@@ -13,6 +13,7 @@ from devspy.simulation import (
     AtomicSimulator,
     Coordinator,
     CoupledSimulator,
+    Observer,
     TimeAtomicSimulator,
     TimeCoordinator,
 )
@@ -31,6 +32,7 @@ __all__ = [
     "IOBasicDevs",
     "ModelStructureError",
     "NoModelSetError",
+    "Observer",
     "TimeAtomicSimulator",
     "TimeCoordinator",
     "ZeroTimeLoopError",
