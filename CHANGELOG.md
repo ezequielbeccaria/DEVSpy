@@ -52,6 +52,17 @@ and fails loudly on invalid models.
 - `Digraph.remove` also drops the couplings of the removed component, and
   accepts a name. `add_coupling` accepts names as well as models.
 
+### Added: real time and activities
+
+- `DevsSuiteFacade.real_time(speed, clock)` returns a `RealTimeRunner`.
+  `run(until, on_output)` paces the simulation against the wall clock, and the
+  thread-safe `post()` and `stop()` feed it input or end it. `WallClock` can be
+  replaced to use a virtual clock.
+- `Atomic.start_activity(fn, *args, port=...)` (real-time runs only): `fn` runs
+  in a thread, and its result comes back as external input.
+- `inject_to(model, t, bag)` on the simulators delivers input straight to an
+  atomic's input ports.
+
 ### Performance
 
 - The coordinator rebuilds its event heap when stale entries pile up (more than
