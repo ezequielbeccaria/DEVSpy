@@ -21,7 +21,7 @@ poetry run pytest
 If you only want to use DEVSpy as a dependency (no dev tools):
 
 ```bash
-pip install .
+pip install git+https://github.com/ezequielbeccaria/DEVSpy.git
 ```
 
 ## A minimal atomic model
@@ -103,15 +103,37 @@ g.add_coupling(src, "out", snk, "in")
 facade = DevsSuiteFacade(g)
 facade.reset()
 facade.simulate_to_time(10.0)
-print(snk.received)  # ~10
+print(snk.received)  # 10
 ```
+
+Every port used in a coupling must be declared (`add_inport`/`add_outport`),
+otherwise building the simulator raises `ModelStructureError`. `reset()` is
+optional before the first run, because running initializes the model if
+needed.
+
+## Getting results out
+
+`simulate_to_time` prints root outputs. To collect them, or to drive the model
+from your own code, use `advance` and `inject`:
+
+```python
+g.add_outport("out")
+g.add_coupling(src, "out", g, "out")      # expose the source's output
+facade = DevsSuiteFacade(g)
+print(facade.advance(3.0))                # [(1.0, {'out': [1]}), (2.0, {'out': [1]}), (3.0, {'out': [1]})]
+```
+
+See [Running simulations](running.md) for stepping, snapshots and observers.
 
 ## Running the bundled examples
 
 ```bash
-poetry run python examples/gpt_model.py            # Generator → Processor → Transducer
-poetry run python examples/mm1_queue.py            # M/M/1 queue with statistics
-poetry run python examples/manufacturing_line.py   # 3-station hierarchical line
+poetry run python examples/gpt_model.py              # Generator → Processor → Transducer
+poetry run python examples/mm1_queue.py              # M/M/1 queue with statistics
+poetry run python examples/manufacturing_line.py     # 3-station hierarchical line
+poetry run python examples/gym_loop.py               # agent outside the model, snapshot/restore
+poetry run python examples/autoscaling.py            # servers added and removed at run time
+poetry run python examples/real_time_thermostat.py   # wall-clock pacing, sensor thread, activity
 ```
 
 See [Examples](examples.md) for what each one demonstrates.

@@ -1,6 +1,8 @@
 # API reference
 
-Public symbols are re-exported from the top-level `devspy` package.
+Public symbols are re-exported from the top-level `devspy` package. For
+narrative explanations see the guides: [Running simulations](running.md),
+[Variable structure](variable-structure.md) and [Real time](real-time.md).
 
 ```python
 from devspy import (
@@ -10,6 +12,7 @@ from devspy import (
     NoModelSetError, ModelStructureError, ZeroTimeLoopError,
     AtomicSimulator, CoupledSimulator, Coordinator,
     TimeAtomicSimulator, TimeCoordinator,
+    RealTimeRunner, WallClock, Activity,
 )
 ```
 
@@ -139,6 +142,23 @@ self.add_outport(name)
 self.get_inports() / self.get_outports()
 ```
 
+Variable structure, acting on the parent digraph and applied after the
+current round:
+
+```python
+self.add_model(model)
+self.remove_model(model_or_name)
+self.add_coupling(src, src_port, dst, dst_port)      # models or names
+self.remove_coupling(src, src_port, dst, dst_port)
+```
+
+Activities (real-time runs only):
+
+```python
+task = self.start_activity(fn, *args, port="activity", **kwargs)   # result arrives on `port`
+task.cancel()
+```
+
 ---
 
 ## `Digraph`
@@ -220,17 +240,28 @@ You normally don't construct these directly — `DevsSuiteFacade` does it.
 | `CoupledSimulator`     | `Atomic` (inside a `Coordinator`)  | internal — per-atomic state and precomputed routes |
 
 Every `simulate*` loop initializes the simulator first if `initialize()` was
-never called.
+never called. Both `AtomicSimulator` and `Coordinator` also provide:
+
+| Method / attribute | Effect |
+|---|---|
+| `inject_at(t, bag)` | Deliver `bag` on input ports at absolute time `t` (`t_l <= t <= t_n`). Confluent if `t == t_n`. |
+| `sim_inject(e, port, value)` / `sim_inject(e, bag)` | Same, `e` after the last event. |
+| `inject_to(model, t, bag)` | Deliver straight to an atomic's input ports (used for activity results). |
+| `snapshot()` / `restore(s)` | What the facade's `snapshot`/`restore` call. |
+| `stop_simulation()` | End the running loop after the current round. |
+| `observers` | The list of attached `Observer`s. |
+| `max_rounds_per_instant` | Zero-time loop guard (default 100 000, `None` disables). |
 
 `Coordinator.scheduler` (class or instance attribute) picks how the next
 events are found:
 
-- `"auto"` (default) measures the work per round and switches between the
-  other two.
-- `"heap"` is a priority queue, best for large networks where few models move
-  per round.
-- `"scan"` is a linear scan, best for small networks or dense ones where many
-  models move per round (15–22% faster there).
+- `"auto"` (default) measures the reschedules per round and picks the
+  cheaper of the other two. The cost model is about n per round for the scan
+  and k·log2 n for the heap.
+- `"heap"` is a priority queue, best for sparse networks, where few models
+  move per round compared with the network size.
+- `"scan"` is a linear scan, best for dense networks, where a large share of
+  the models move every round (about 16% faster on DEVStone).
 
 All three give identical results.
 
