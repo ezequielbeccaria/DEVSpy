@@ -18,6 +18,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from run_devstone import PY, PY_SUFFIX, devspy_path  # noqa: E402
 from run_devstone import (CPP_BIN, CPP_ENGINES, HERE, JAVA, JAVA_LABEL, JAVA_OPTS,  # noqa: E402
                           OTHER_ENGINES, OTHERS_PY, PYPDEVS_PATH, devspy_label)
 
@@ -46,7 +47,7 @@ def run_procs(cmds, src=""):
     forked Python parent's footprint (~14 MiB floor) for exec'd children.
     """
     t0 = time.perf_counter()
-    env = dict(os.environ, PYTHONPATH=os.path.join(src, "src") if src else PYPDEVS_PATH)
+    env = dict(os.environ, PYTHONPATH=devspy_path(src) if src else PYPDEVS_PATH)
     procs = [subprocess.Popen([TIME, "-f", "RSSKB=%M", *c], stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, text=True, env=env) for c in cmds]
     results = [p.communicate() for p in procs]
@@ -69,7 +70,8 @@ def main():
     for spec in a.engines:
         engine, _, src = spec.partition("=")
         label = (JAVA_LABEL if engine == "devsjava"
-                 else engine if engine in OTHER_ENGINES + CPP_ENGINES else devspy_label(src))
+                 else engine if engine in OTHER_ENGINES + CPP_ENGINES
+                 else devspy_label(src) + PY_SUFFIX)
         for m, e, h in SINGLE:
             runs = [run_procs([cmd_for(engine, m, e, h)], src) for _ in range(a.reps)]
             inner = runs[0][2][0]
@@ -79,7 +81,8 @@ def main():
                    "run_ms_median": statistics.median(r[2][0]["run_ms"] for r in runs),
                    "first_ep_ms": statistics.median(r[2][0]["first_ep_ms"] for r in runs),
                    "ep_ms_median": statistics.median(r[2][0]["ep_ms_median"] for r in runs),
-                   "rss_mib": statistics.median(r[1][0] for r in runs), "date": date}
+                   "rss_mib": statistics.median(r[1][0] for r in runs), "date": date,
+                   "python": PY}
             out.write(json.dumps(row) + "\n")
             print(f"{label:22s} single m={m} E={e}: wall={row['wall_ms_median']:.0f}ms "
                   f"run={row['run_ms_median']:.0f}ms ep={row['ep_ms_median']:.2f}ms "
@@ -92,7 +95,8 @@ def main():
             row = {"scenario": "parallel", "label": label, "workers": p, "sections": m,
                    "episodes_per_worker": e, "horizon": h, "wall_ms_median": wall,
                    "episodes_per_s": p * e / (wall / 1e3),
-                   "rss_total_mib": statistics.median(sum(r[1]) for r in runs), "date": date}
+                   "rss_total_mib": statistics.median(sum(r[1]) for r in runs), "date": date,
+                   "python": PY}
             out.write(json.dumps(row) + "\n")
             print(f"{label:22s} parallel P={p:2d}: wall={wall:.0f}ms "
                   f"eps/s={row['episodes_per_s']:.0f} rss_total={row['rss_total_mib']:.0f}MiB",

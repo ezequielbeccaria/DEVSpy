@@ -37,10 +37,10 @@ class Coordinator(AtomicSimulator):
 
     Scheduling: tN = min tN_d and IMM(t) = {d | tN_d = t} come either from a heap
     of `(t_n, index, version)` or from a linear scan of the simulators. The scan
-    costs about 0.05 µs per simulator and round, the heap about 0.27 µs per
-    reschedule, so with `scheduler = "auto"` the coordinator measures the
-    reschedules per round and uses the scan while n < ~5 per round (dense
-    models and small networks), the heap otherwise. "heap" and "scan" force one.
+    costs ~n per round, the heap ~k·log2(n) for k reschedules per round, so with
+    `scheduler = "auto"` the coordinator measures k and scans while
+    n / (k·log2 n) < ~0.42 (dense models), using the heap otherwise. "heap" and
+    "scan" force one.
 
     Variable structure: when a digraph of the hierarchy changes (components or
     couplings added or removed, e.g. from a model's transition), the network is
@@ -50,7 +50,8 @@ class Coordinator(AtomicSimulator):
     """
 
     scheduler: str = "auto"
-    _AUTO_PERIOD = 64  # rounds between scheduler choices
+    _AUTO_PERIOD = 61  # rounds before the first scheduler choice; then doubling
+    _AUTO_PERIOD_MAX = 8192
 
     def __init__(self, coupled: Digraph, set_simulators: bool = True) -> None:
         super().__init__(coupled)
@@ -64,9 +65,12 @@ class Coordinator(AtomicSimulator):
         # Rebuild the heap when stale entries make it this long (set in _flatten).
         self._heap_limit = 64
         # Linear-scan scheduling instead of the heap (see `scheduler`).
-        self._scan = self.scheduler == "scan"
-        self._rounds_seen = 0
-        self._reschedules = 0
+        # Scheduler mode: next_tn/_pop are bound to the heap or scan variant, so
+        # the hot path has no mode branch. In "auto" mode _rounds re-chooses after
+        # 61, 122, 244, ... rounds; the reschedules in between are the growth of
+        # the simulators' version sum (each reschedule bumps exactly one version).
+        self._set_scan(self.scheduler == "scan")
+        self._reset_choice()
         self._imminent: list[CoupledSimulator] = []
         self._receivers: list[CoupledSimulator] = []
         self._imminent_time: float = -INFINITY
@@ -182,6 +186,7 @@ class Coordinator(AtomicSimulator):
                 model.initialize()
                 sim.t_n = t + model.ta()
         self._rebuild_heap()
+        self._reset_choice()
         self.t_n = self.next_tn()
 
     def _resolve(self, g: Digraph, name: str, port: str, out: list[Route]) -> None:
@@ -216,9 +221,10 @@ class Coordinator(AtomicSimulator):
         return fanout
 
     # --- time --------------------------------------------------------------
-    def next_tn(self) -> float:
-        if self._scan:
-            return min(map(_get_tn, self.simulators), default=INFINITY)
+    def _next_tn_scan(self) -> float:
+        return min(map(_get_tn, self.simulators), default=INFINITY)
+
+    def _next_tn_heap(self) -> float:
         heap, sims = self._heap, self.simulators
         while heap:
             tn, idx, version = heap[0]
@@ -244,6 +250,7 @@ class Coordinator(AtomicSimulator):
                 model.show_state()
         heap.sort()
         self._heap = [] if self._scan else heap
+        self._reset_choice()
         self._imminent = []
         self._receivers = []
         self._imminent_time = -INFINITY
@@ -257,10 +264,12 @@ class Coordinator(AtomicSimulator):
             self._restructure()
 
     # --- transition --------------------------------------------------------
-    def _pop(self, time: float) -> list[CoupledSimulator]:
-        """IMM(time), in simulator index order (popped from the heap, or scanned)."""
-        if self._scan:
-            return [s for s in self.simulators if s.t_n == time]
+    def _pop_scan(self, time: float) -> list[CoupledSimulator]:
+        """IMM(time), in simulator index order, by scanning."""
+        return [s for s in self.simulators if s.t_n == time]
+
+    def _pop_heap(self, time: float) -> list[CoupledSimulator]:
+        """IMM(time), in simulator index order, popped from the heap."""
         heap, sims = self._heap, self.simulators
         imminent: list[CoupledSimulator] = []
         while heap and heap[0][0] <= time:
@@ -312,9 +321,9 @@ class Coordinator(AtomicSimulator):
             affected = imminent
         heap = self._heap
         push = heappush
-        inf = INFINITY
+        # Push while tn < limit: every finite tn in heap mode, nothing in scan mode.
+        limit = -INFINITY if self._scan else INFINITY
         observers = self.observers
-        use_heap = not self._scan
         for sim in affected:
             model = sim.my_model
             x_bag = sim.input
@@ -340,33 +349,44 @@ class Coordinator(AtomicSimulator):
             sim.t_n = tn
             version = sim.version + 1
             sim.version = version
-            if use_heap and tn < inf:
+            if tn < limit:
                 push(heap, (tn, sim.index, version))
         if len(heap) > self._heap_limit:
             self._rebuild_heap()
-        self._reschedules += len(affected)
-        self._rounds_seen += 1
-        if self._rounds_seen >= self._AUTO_PERIOD and self.scheduler == "auto":
-            self._choose_scheduler()
 
     def _sync_scheduler(self) -> None:
-        """Honour a `scheduler` forced on the instance after construction."""
+        """Honour a `scheduler` set on the instance after construction."""
         if self.scheduler != "auto" and (self.scheduler == "scan") != self._scan:
             self._set_scan(self.scheduler == "scan")
 
     def _choose_scheduler(self) -> None:
         """Pick scan or heap from the reschedules per round since the last choice
         (with hysteresis, so a borderline model does not flip every period)."""
-        per_round = self._reschedules / self._rounds_seen
-        self._rounds_seen = self._reschedules = 0
+        versions = sum(map(_get_version, self.simulators))
+        per_round = (versions - self._versions_seen) / max(self._round_count - self._count_seen, 1)
+        self._versions_seen, self._count_seen = versions, self._round_count
+        self._choice_period = min(2 * self._choice_period, self._AUTO_PERIOD_MAX)
+        self._next_choice = self._round_count + self._choice_period
         n = len(self.simulators)
-        if not self._scan and n < 4.5 * per_round + 8:
+        # scan ~ n per round; heap ~ reschedules * log2(n) per round
+        ratio = n / (per_round * max(math.log2(n), 1.0)) if per_round else INFINITY
+        if not self._scan and ratio < 0.38:
             self._set_scan(True)
-        elif self._scan and n > 6.5 * per_round + 16:
+        elif self._scan and ratio > 0.46:
             self._set_scan(False)
+
+    def _reset_choice(self) -> None:
+        """Start measuring afresh (versions changed outside rounds: initialize,
+        restore, restructure); the next choice comes after _AUTO_PERIOD rounds."""
+        self._versions_seen = sum(map(_get_version, self.simulators))
+        self._round_count = self._count_seen = 0
+        self._choice_period = self._AUTO_PERIOD
+        self._next_choice = self._AUTO_PERIOD
 
     def _set_scan(self, scan: bool) -> None:
         self._scan = scan
+        self.next_tn = self._next_tn_scan if scan else self._next_tn_heap  # type: ignore[method-assign]
+        self._pop = self._pop_scan if scan else self._pop_heap  # type: ignore[method-assign]
         self._rebuild_heap()  # from the simulators' t_n (empty in scan mode)
 
     def _rebuild_heap(self) -> None:
@@ -462,6 +482,9 @@ class Coordinator(AtomicSimulator):
         if limit is None:
             limit = INFINITY
         last_t, same = -INFINITY, 0
+        auto = self.scheduler == "auto"
+        next_choice = self._next_choice
+        count = self._round_count
         i = 1
         t = self.t_n = self.next_tn()
         while t < INFINITY and t <= max_time and i <= num_iter and not self._stop_sim_flag:
@@ -477,8 +500,14 @@ class Coordinator(AtomicSimulator):
             else:
                 last_t, same = t, 1
             run_round(t)
+            count += 1
+            if auto and count >= next_choice:
+                self._round_count = count
+                self._choose_scheduler()
+                next_choice = self._next_choice
             if self._structure_pending:
-                self._restructure()
+                self._restructure()  # restarts the scheduler measurement
+                count, next_choice = self._round_count, self._next_choice
             if self.output:
                 self.show_output()
                 self.output = {}
@@ -486,6 +515,7 @@ class Coordinator(AtomicSimulator):
                 self.show_model_state()
             i += 1
             t = self.t_n
+        self._round_count = count
         log(f"Terminated Normally at ITERATION {i} ,time: {self.t_n}", FULL)
 
     # --- snapshots ---------------------------------------------------------
@@ -513,6 +543,7 @@ class Coordinator(AtomicSimulator):
             set_model_state(sim.my_model, ms)
             sim.t_l, sim.t_n, sim.version, sim.input = t_l, t_n, version, inp
         self._rebuild_heap()
+        self._reset_choice()
         self.t_l, self.t_n = state["times"]
         self._imminent = []
         self._receivers = []
@@ -587,6 +618,7 @@ def _group(routes: list[Route]) -> list[Fanout]:
 
 _by_index = attrgetter("index")
 _get_tn = attrgetter("t_n")
+_get_version = attrgetter("version")
 
 
 def _check_components(g: Digraph) -> dict[str, DevsBase]:
