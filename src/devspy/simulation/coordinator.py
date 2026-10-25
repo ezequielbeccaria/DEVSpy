@@ -211,7 +211,7 @@ class Coordinator(AtomicSimulator):
             heappop(heap)
         return INFINITY
 
-    def initialize(self, current_time: float = 0.0) -> None:
+    def initialize(self, current_time: float = 0) -> None:
         show = self.custom_show_state or is_enabled(FULL)
         heap: list[tuple[float, int, int]] = []
         self._running = True  # a model's initialize() may change the structure
@@ -398,7 +398,7 @@ class Coordinator(AtomicSimulator):
         """Run rounds while `t_n <= max_time`, for at most `num_iter` rounds or until
         `stop_simulation()`. Initializes first if `initialize()` was never called."""
         if not self.initialized:
-            self.initialize(0.0)
+            self.initialize(0)
         self._stop_sim_flag = False
         self._running = True
         try:

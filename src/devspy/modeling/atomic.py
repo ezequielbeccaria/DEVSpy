@@ -109,7 +109,7 @@ class Atomic(IOBasicDevs):
         δcon(s, x) = δext(δint(s), 0, x). The input arrives just after the internal
         transition, so the elapsed time in the new state is 0, not `e`."""
         self.deltint()
-        self.deltext(0.0, x)
+        self.deltext(0, x)
 
     def out(self) -> Bag:
         """Output function: return {port: [values]} ({} for no output). Override."""
@@ -124,6 +124,3 @@ class Atomic(IOBasicDevs):
             return
         log(f"Model {self.get_name()}'s state: ", FULL)
         log(f"phase :{self.phase} sigma : {self.sigma}", FULL)
-
-    def string_state(self) -> str:
-        return ""

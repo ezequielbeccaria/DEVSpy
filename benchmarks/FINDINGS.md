@@ -725,6 +725,29 @@ when its rounds run on the wall clock.
   the last event" and "pacing ignores speed".
 - The kernel hot path is unchanged.
 
+## Iteration 11: exact time and API cleanup (branch `feat/api-cleanup`)
+
+- **B5, exact time.** Simulation time started at `0.0`, so `0.0 + Fraction`
+  silently became a float, and so did the default `deltcon`'s `deltext(0.0,
+  x)`. Both are now the integer `0`. The kernel only adds and compares times,
+  so `int` and `Fraction` time stays exact end to end.
+  - Floats are unchanged (`0 + 0.5 == 0.5`), and so are the example outputs,
+    the trace digest and the TrackRailway digest.
+  - Why it matters: PDEVS simultaneity is `==` on time. With floats,
+    `0.1+0.1+0.1 ≠ 0.3`, so models that should be confluent run in separate
+    rounds. `tests/test_robustness.py` demonstrates it: 4 rounds with floats,
+    3 with `Fraction`.
+  - The oracle runs 100 models with delays in thirds, which are inexact in
+    binary. Kernel and reference agree, and every logged time stays
+    `int`/`Fraction`. The first version of that test caught the default
+    `deltcon`'s `0.0`.
+- **C5, API cleanup.**
+  - Removed the DEVSJAVA-style simulator getters that nothing used (`get_tn`,
+    `equal_tn`, `get_tl`, `get_output`, `get_input`) and `Atomic.string_state`.
+  - Kept the helpers the downstream projects use: `get_sigma`, `set_sigma`,
+    `phase_is`, `get_model`.
+  - Added the `py.typed` marker.
+
 ## Iteration 2 backlog: features DEVSJAVA has and DEVSpy lacks
 
 In order of relevance for this project:

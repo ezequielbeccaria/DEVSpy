@@ -73,7 +73,7 @@ class RealTimeRunner:
         root outputs as `(t, bag)`, also passing each to `on_output` as it happens."""
         sim = self.sim
         if not sim.initialized:
-            sim.initialize(0.0)
+            sim.initialize(0)
         outputs: list[tuple[float, Bag]] = []
         sink = _Sink(outputs, on_output)
         saved = sim._sink, sim._stop_on_output, getattr(sim, "_rt_runner", None)
