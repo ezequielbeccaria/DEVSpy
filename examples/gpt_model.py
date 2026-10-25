@@ -17,6 +17,7 @@ OBS_TIME = 20.0
 class Generator(Atomic):
     def __init__(self) -> None:
         super().__init__("generator")
+        self.add_inport("stop")
         self.add_outport("out")
         self._job_id = 0
 

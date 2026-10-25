@@ -6,7 +6,7 @@ Public symbols are re-exported from the top-level `devspy` package.
 from devspy import (
     Atomic, Digraph, Coupled, Couprel, Bag,
     DevsBase, IOBasicDevs,
-    DevsSuiteFacade, NoModelSetError,
+    DevsSuiteFacade, NoModelSetError, ModelStructureError, ZeroTimeLoopError,
     AtomicSimulator, CoupledSimulator, Coordinator,
     TimeAtomicSimulator, TimeCoordinator,
 )
@@ -29,10 +29,10 @@ Accepts an `Atomic`, a `Digraph`, a preconfigured `TimeCoordinator`, or `None`
 | Method                                   | Effect                                                          |
 |------------------------------------------|-----------------------------------------------------------------|
 | `set_atomic_model(model)`                | Wraps the atomic model in a `TimeAtomicSimulator` and initializes to t=0. |
-| `set_digraph_model(model, initialize=True)` | Wraps the digraph in a `TimeCoordinator`. When invoked through the constructor, `initialize=False` — call `reset()` explicitly before simulating. |
+| `set_digraph_model(model, initialize=True)` | Wraps the digraph in a `TimeCoordinator` (validating its structure). Through the constructor, `initialize=False`: the first `reset()` or `simulate_*()` initializes. |
 | `reset()`                                | Re-initializes the simulator to t=0.                            |
 | `simulate_iterations(n)`                 | Runs the iteration-count simulator (`Coordinator.simulate(n)`). |
-| `simulate_to_time(t)`                    | Runs until simulated time reaches `t`.                          |
+| `simulate_to_time(t)`                    | Runs every event with `t_n <= t` (atomic and digraph models alike). |
 | `simulate_to_time(t0, t1)`               | Initializes at `t0` then simulates to `t1`.                     |
 | `deep_cloning()`                         | Returns a `copy.deepcopy` of the underlying simulator.          |
 | `is_simulation_done()`                   | True once a `simulate_*` call has returned.                     |
@@ -60,7 +60,7 @@ Override these:
 | `initialize()`          | Once, before simulation starts. Set initial phase/sigma. |
 | `deltint()`             | When `t == t_n` and no input is pending.                 |
 | `deltext(e, x)`         | When input arrives and `t != t_n`.                       |
-| `deltcon(e, x)`         | When input arrives at `t == t_n`. Default = `deltint()` then `deltext(e, x)`. |
+| `deltcon(e, x)`         | When input arrives at `t == t_n`. Default = `deltint()` then `deltext(0, x)`. |
 | `out() -> Bag`          | Just before `deltint`/`deltcon`. Return what to emit.    |
 
 State helpers (already implemented):
@@ -123,7 +123,8 @@ def out(self):                      # return a Bag; {} means no output
 - `Couprel` stores couplings as `(component, port)` tuples:
   `g.get_couprel().translate("src", "out") -> {("sink", "in"), ...}`.
 - `sim_inject(e, port, value)` or `sim_inject(e, {port: [values]})` injects
-  external input.
+  external input `e` after the last event. It raises `ValueError` unless
+  `0 <= e <= t_n - t_l` and every port is a declared input port.
 
 ---
 
@@ -135,21 +136,20 @@ You normally don't construct these directly — `DevsSuiteFacade` does it.
 |------------------------|------------------------------------|----------------------------------------------------|
 | `AtomicSimulator`      | `Atomic`                           | `simulate(num_iter)` — iteration-limited           |
 | `Coordinator`          | `Digraph`                          | `simulate(num_iter)` — iteration-limited           |
-| `TimeAtomicSimulator`  | `Atomic`                           | `simulate(time)` (iteration-gated; see note), `simulate_until_time(t)`, `simulate_from_to(t0, t1)` |
+| `TimeAtomicSimulator`  | `Atomic`                           | `simulate(time)`, `simulate_from_to(t0, t1)` (`simulate_until_time` is an alias) |
 | `TimeCoordinator`      | `Digraph`                          | `simulate(max_sim_time)`, `simulate_from_to(t0, t1)`, `stop_simulation()` |
 | `CoupledSimulator`     | `Atomic` (inside a `Coordinator`)  | internal — per-atomic state and precomputed routes |
 
-### `TimeAtomicSimulator.simulate(time)` is iteration-gated
-
-For backwards-compatibility, `TimeAtomicSimulator.simulate(time)` loops
-`while i <= time` where `i` is the iteration counter — not the simulated
-time. Use `simulate_until_time(t)` for a real time gate.
-`TimeCoordinator.simulate(t)` does gate on simulated time (`t_n <= t`).
+Every `simulate*` loop initializes the simulator first if `initialize()` was
+never called.
 
 ---
 
 ## Exceptions
 
-```python
-NoModelSetError  # raised by DevsSuiteFacade.simulate_* when no model is set
-```
+| Exception             | Raised when                                                   |
+|-----------------------|---------------------------------------------------------------|
+| `ModelStructureError` (a `ValueError`) | Building a coordinator for an invalid network: duplicate component names in a digraph (or a component named like its digraph), a coupling to an unknown component or an undeclared port, an input coupled straight to an output, or an atomic whose output reaches its own input (directly or through the hierarchy). |
+| `ZeroTimeLoopError` (a `RuntimeError`) | A run spends more than `max_rounds_per_instant` rounds (default 100 000) at one simulated time, typically a `ta() == 0` loop. Set the attribute on the simulator (or class) to raise the limit, or to `None` to disable the check. |
+| `ValueError`          | `sim_inject` outside `[0, t_n - t_l]` or on an undeclared input port. |
+| `NoModelSetError`     | A facade method runs before any model was set.                |

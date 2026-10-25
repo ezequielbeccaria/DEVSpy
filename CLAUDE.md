@@ -38,11 +38,12 @@ The code is split into two parallel trees: **modeling** (what the user writes) a
   - `TimeAtomicSimulator` and `TimeCoordinator` add time-limited runs.
 - `facade.py`: `DevsSuiteFacade` is the public entry point. It wraps an `Atomic` in a `TimeAtomicSimulator`, or a `Digraph` in a `TimeCoordinator`. Its `simulate_iterations` calls the **base-class** `simulate(num_iter)` directly to skip the time-based override.
 
-### Parity quirks to keep in mind
+### Semantics to keep in mind (0.3.0 dropped the DEVSJAVA parity quirks)
 
-- `TimeAtomicSimulator.simulate(time)` gates on the **iteration counter** (`i <= time`), not on simulated time, to match the Java behaviour. This means `facade.simulate_to_time(t)` on an *atomic* model runs about `t` iterations. `simulate_until_time` is the version that gates on time. `TimeCoordinator.simulate` gates on time correctly.
-- `DevsSuiteFacade(digraph)` does **not** initialize, matching Java. Call `facade.reset()` before simulating. `set_digraph_model` initializes by default.
-- The default `deltcon` runs `deltint()` and then `deltext(e, x)` with the pre-`deltint` `e` (Zeigler's PDEVS default uses `e = 0`). Models that track their own clock should override it (see `Transducer` in `examples/gpt_model.py`).
+- `Coordinator` validates the network while flattening and raises `ModelStructureError`: unique component names per digraph, couplings only between declared ports (EIC/IC/EOC), no input-to-output coupling, and no atomic whose output reaches its own input. Models must `add_inport`/`add_outport` every port they couple.
+- Run loops (`_run`) initialize on first use. `DevsSuiteFacade(digraph)` itself does not initialize, so "construct, `reset()`, simulate" initializes exactly once (TrackRailway's RNG streams depend on that). Every `simulate*` gates on simulated time, except the iteration-count `simulate(num_iter)` of the base classes.
+- More than `max_rounds_per_instant` (100 000) consecutive rounds at one time raise `ZeroTimeLoopError`.
+- The default `deltcon` is `deltint(); deltext(0, x)` (Chow & Zeigler). `sim_inject` raises `ValueError` outside `[0, t_n - t_l]` or on undeclared ports.
 - Logging goes through `util/logging.py`, a thin shim over the `devspy` stdlib logger. Java's `FULL`/`PARTIAL` levels map to `DEBUG`/`INFO`.
 
 ## Conventions
