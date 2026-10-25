@@ -186,6 +186,12 @@ class AtomicSimulator:
         bag = port_or_bag if isinstance(port_or_bag, dict) else {str(port_or_bag): [value]}
         self.inject_at(self.t_l + e, bag)
 
+    def inject_to(self, model: Any, t: float, bag: Bag) -> None:
+        """`inject_at` for the simulated model itself (activity results)."""
+        if model is not self.my_model:
+            raise ValueError(f"{model!r} is not part of this simulation")
+        self.inject_at(t, bag)
+
     def inject_at(self, t: float, bag: Bag) -> None:
         """Inject `bag` at absolute time `t`, `t_l <= t <= t_n`."""
         _check_injection(self, t, bag, self.my_model._inports)

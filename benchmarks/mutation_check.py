@@ -10,6 +10,7 @@ import sys
 C = pathlib.Path("src/devspy/simulation/coordinator.py")
 A = pathlib.Path("src/devspy/modeling/atomic.py")
 D = pathlib.Path("src/devspy/modeling/digraph.py")
+R = pathlib.Path("src/devspy/simulation/real_time.py")
 M = [
   ("confluent -> deltext", C, "model.deltcon(time - sim.t_l, x_bag)", "model.deltext(time - sim.t_l, x_bag)"),
   ("default deltcon old e", A, "self.deltext(0.0, x)", "self.deltext(e, x)"),
@@ -25,6 +26,8 @@ M = [
   ("new atomics start at t=0", C, "                sim.t_n = t + model.ta()", "                sim.t_n = model.ta()"),
   ("restructure loses existing state", C, "                    sim = reuse.pop(id(c), None) if reuse else None", "                    sim = None"),
   ("removal keeps couplings", D, "        for src, dst in dropped:\n            self._couprel.remove(src, dst)", "        pass"),
+  ("real time: input delivered at the last event", R, "self._deliver(item, max(min(now_t, sim.next_tn(), until), sim.t_l))", "self._deliver(item, sim.t_l)"),
+  ("real time: pacing ignores speed", R, "else (horizon - now_t) / self.speed", "else (horizon - now_t)"),
   ("root output dropped", C, "inp = root_out if dsim is None else dsim.input", "inp = {} if dsim is None else dsim.input"),
 ]
 for name, path, old, new in M:
@@ -32,7 +35,9 @@ for name, path, old, new in M:
     assert old in src, name
     path.write_text(src.replace(old, new, 1))
     try:
-        r = subprocess.run([sys.executable, "-m", "pytest", "-q", "-x", "tests/test_reference_pdevs.py"], capture_output=True, text=True)
+        tests = ["tests/test_reference_pdevs.py", "tests/test_real_time.py"]
+        cmd = [sys.executable, "-m", "pytest", "-q", "-x", *tests]
+        r = subprocess.run(cmd, capture_output=True, text=True)
         print(f"{'CAUGHT' if r.returncode else 'MISSED'}  {name}")
     finally:
         path.write_text(src)

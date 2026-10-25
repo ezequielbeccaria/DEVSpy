@@ -10,15 +10,19 @@ from devspy.modeling import (
     IOBasicDevs,
 )
 from devspy.simulation import (
+    Activity,
     AtomicSimulator,
     Coordinator,
     CoupledSimulator,
     Observer,
+    RealTimeRunner,
     TimeAtomicSimulator,
     TimeCoordinator,
+    WallClock,
 )
 
 __all__ = [
+    "Activity",
     "Atomic",
     "AtomicSimulator",
     "Bag",
@@ -33,8 +37,10 @@ __all__ = [
     "ModelStructureError",
     "NoModelSetError",
     "Observer",
+    "RealTimeRunner",
     "TimeAtomicSimulator",
     "TimeCoordinator",
+    "WallClock",
     "ZeroTimeLoopError",
 ]
 __version__ = "0.3.0"
