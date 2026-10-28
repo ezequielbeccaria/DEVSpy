@@ -7,7 +7,10 @@ usage: python trackrailway_trace.py PATH/TO/RLDEVSpy-TrackRailway/examples/three
 import hashlib
 import sys
 sys.path.insert(0, sys.argv[1])  # examples/three_stops of the checkout under test
-from devspy import DevsSuiteFacade
+try:
+    from devspy import SimulationManager
+except ImportError:  # DEVSpy < 0.3, when comparing against older checkouts
+    from devspy import DevsSuiteFacade as SimulationManager
 from rldevspy import RLEnvironment
 from agent import RandomAgent
 from _n_train_builder import build_n_train_three_stops_env_event_driven_dense as build
@@ -26,7 +29,7 @@ for n in (1, 3, 5):
         LOG = []
         env = build(num_trains=n, simulation_time=7200.0, seed=seed)
         agent = Rec(seed=seed)
-        f = DevsSuiteFacade(RLEnvironment(agent, env, name="e2e"))
+        f = SimulationManager(RLEnvironment(agent, env, name="e2e"))
         for ep in range(3):
             f.reset()
             f.simulate_to_time(7200.0)

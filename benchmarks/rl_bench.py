@@ -9,14 +9,17 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from devspy import DevsSuiteFacade  # noqa: E402
+try:
+    from devspy import SimulationManager
+except ImportError:  # DEVSpy < 0.3, when comparing against older checkouts
+    from devspy import DevsSuiteFacade as SimulationManager
 from rl_model import SEED, STATS, build  # noqa: E402
 
 
 def main():
     m, episodes, horizon = int(sys.argv[1]), int(sys.argv[2]), float(sys.argv[3])
     t0 = time.perf_counter()
-    facade = DevsSuiteFacade(build(m))
+    facade = SimulationManager(build(m))
     t1 = time.perf_counter()
     ep_ms = []
     for ep in range(episodes):

@@ -11,7 +11,7 @@ Everything goes through Poetry:
 ```bash
 poetry install                              # editable install + dev group (pytest, ruff)
 poetry run pytest                           # full suite
-poetry run pytest tests/test_facade.py      # one file
+poetry run pytest tests/test_manager.py     # one file
 poetry run pytest -k mm1                    # by keyword / single test name
 poetry run ruff check src tests             # lint (line-length 100, target py39)
 poetry run ruff format src tests
@@ -39,13 +39,13 @@ The code is split into two parallel trees: **modeling** (what the user writes) a
   - `TimeAtomicSimulator` and `TimeCoordinator` add time-limited runs.
   - `observer.py`: `Observer` (`on_output`, `on_transition`), which `_lambda`/`_delta` notify only `if observers:`, plus the snapshot helpers. A snapshot deep-copies model attributes but keeps models, digraphs and simulators by reference.
   - `real_time.py`: `RealTimeRunner` paces `_run(1, t_next)` against a `WallClock`. Other threads only touch its `queue.Queue` inbox (`post`, `stop`, activity results). Inputs are delivered with `inject_at`/`inject_to` at the clock's simulated time, clamped to `[t_l, t_n]`, and always after the due events.
-  - Root outputs go through `show_output()`. It prints them, or appends `(t, bag)` to `_sink` when the facade's `advance`/`inject` are collecting them. `inject_at(t, bag)` takes an absolute time, so it does not drift through `t_l + e`.
-- `facade.py`: `DevsSuiteFacade` is the public entry point. It wraps an `Atomic` in a `TimeAtomicSimulator`, or a `Digraph` in a `TimeCoordinator`. Its `simulate_iterations` calls the **base-class** `simulate(num_iter)` directly to skip the time-based override.
+  - Root outputs go through `show_output()`. It prints them, or appends `(t, bag)` to `_sink` when `SimulationManager.advance`/`inject` are collecting them. `inject_at(t, bag)` takes an absolute time, so it does not drift through `t_l + e`.
+- `manager.py`: `SimulationManager` (formerly `DevsSuiteFacade`, removed in 0.3.0) is the public entry point. It holds no DEVS logic and only manages one simulator's life cycle. It wraps an `Atomic` in a `TimeAtomicSimulator`, or a `Digraph` in a `TimeCoordinator`. Its `simulate_iterations` calls the **base-class** `simulate(num_iter)` directly to skip the time-based override.
 
 ### Semantics to keep in mind (0.3.0 dropped the DEVSJAVA parity quirks)
 
 - `Coordinator` validates the network while flattening and raises `ModelStructureError`: unique component names per digraph, couplings only between declared ports (EIC/IC/EOC), no input-to-output coupling, and no atomic whose output reaches its own input. Models must `add_inport`/`add_outport` every port they couple.
-- Run loops (`_run`) initialize on first use. `DevsSuiteFacade(digraph)` itself does not initialize, so "construct, `reset()`, simulate" initializes exactly once (TrackRailway's RNG streams depend on that). Every `simulate*` gates on simulated time, except the iteration-count `simulate(num_iter)` of the base classes.
+- Run loops (`_run`) initialize on first use. `SimulationManager(digraph)` itself does not initialize, so "construct, `reset()`, simulate" initializes exactly once (TrackRailway's RNG streams depend on that). Every `simulate*` gates on simulated time, except the iteration-count `simulate(num_iter)` of the base classes.
 - More than `max_rounds_per_instant` (100 000) consecutive rounds at one time raise `ZeroTimeLoopError`.
 - The default `deltcon` is `deltint(); deltext(0, x)` (Chow & Zeigler). `sim_inject` raises `ValueError` outside `[0, t_n - t_l]` or on undeclared ports.
 - Logging goes through `util/logging.py`, a thin shim over the `devspy` stdlib logger. Java's `FULL`/`PARTIAL` levels map to `DEBUG`/`INFO`.

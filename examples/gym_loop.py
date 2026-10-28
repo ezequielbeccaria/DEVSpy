@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import random
 
-from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
+from devspy import Atomic, Bag, SimulationManager, Digraph
 
 TARGET = 50.0
 
@@ -62,26 +62,26 @@ def bang_bang(level: float) -> float:
     return 1.0 if level > TARGET else 0.0
 
 
-def episode(facade: DevsSuiteFacade, policy, steps: int) -> float:
+def episode(manager: SimulationManager, policy, steps: int) -> float:
     """Run `steps` observation/action pairs; return the mean absolute error."""
     error = 0.0
     for _ in range(steps):
-        [(t, obs)] = facade.advance(stop_on_output=True)
+        [(t, obs)] = manager.advance(stop_on_output=True)
         level = obs["level"][0]
         error += abs(level - TARGET)
-        facade.inject("valve", policy(level))  # at time t, e = 0 after the observation
+        manager.inject("valve", policy(level))  # at time t, e = 0 after the observation
     return error / steps
 
 
 def run(seed: int = 0, steps: int = 50) -> dict:
-    facade = DevsSuiteFacade(build(seed))
-    episode(facade, proportional, 10)  # warm-up
-    checkpoint = facade.snapshot()
+    manager = SimulationManager(build(seed))
+    episode(manager, proportional, 10)  # warm-up
+    checkpoint = manager.snapshot()
     results = {}
     for name, policy in (("proportional", proportional), ("bang-bang", bang_bang)):
-        facade.restore(checkpoint)  # both policies start from the same state
-        results[name] = episode(facade, policy, steps)
-    results["time"] = facade.time
+        manager.restore(checkpoint)  # both policies start from the same state
+        results[name] = episode(manager, policy, steps)
+    results["time"] = manager.time
     results["steps"] = steps
     return results
 

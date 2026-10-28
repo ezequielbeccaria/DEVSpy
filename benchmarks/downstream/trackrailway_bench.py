@@ -7,7 +7,10 @@ import statistics
 import sys
 import time
 sys.path.insert(0, sys.argv[1])
-from devspy import DevsSuiteFacade
+try:
+    from devspy import SimulationManager
+except ImportError:  # DEVSpy < 0.3, when comparing against older checkouts
+    from devspy import DevsSuiteFacade as SimulationManager
 from rldevspy import RLEnvironment
 from agent import RandomAgent
 from _n_train_builder import build_n_train_three_stops_env_event_driven_dense as build
@@ -15,7 +18,7 @@ from _n_train_builder import build_n_train_three_stops_env_event_driven_dense as
 n_trains, episodes = int(sys.argv[2]), int(sys.argv[3])
 env = build(num_trains=n_trains, simulation_time=7200.0, seed=0)
 agent = RandomAgent(seed=0)
-f = DevsSuiteFacade(RLEnvironment(agent, env, name="bench"))
+f = SimulationManager(RLEnvironment(agent, env, name="bench"))
 ep = []
 for _ in range(episodes):
     t0 = time.perf_counter()

@@ -2,7 +2,7 @@
 
 import pytest
 
-from devspy import Atomic, DevsSuiteFacade, Digraph, ModelStructureError
+from devspy import Atomic, SimulationManager, Digraph, ModelStructureError
 
 
 class Pulse(Atomic):
@@ -64,7 +64,7 @@ def test_message_crosses_three_levels_up_and_down():
     top.add(src)
     top.add(dst)
     top.add_coupling(src, "out", dst, "in")
-    f = DevsSuiteFacade(top)
+    f = SimulationManager(top)
     f.reset()
     f.simulate_to_time(10.0)
     assert rec.seen == [(1.0, 0), (2.0, 1), (3.0, 2)]
@@ -73,7 +73,7 @@ def test_message_crosses_three_levels_up_and_down():
 def test_sim_inject_reaches_nested_atomic():
     rec = Recorder("r")
     top = _wrap("top", _wrap("mid", rec, out_port=False), out_port=False)
-    f = DevsSuiteFacade(top)
+    f = SimulationManager(top)
     f.reset()
     f.get_simulator().sim_inject(2.5, "in", 7)
     assert rec.seen == [(2.5, 7)]
@@ -85,7 +85,7 @@ def test_reset_reuses_the_model_and_replays_identically():
     top.add(pulse)
     top.add(rec)
     top.add_coupling(pulse, "out", rec, "in")
-    f = DevsSuiteFacade(top)
+    f = SimulationManager(top)
     runs = []
     for _ in range(3):
         f.reset()
@@ -104,12 +104,12 @@ def test_incremental_simulate_to_time_matches_one_shot():
         return top, rec
 
     top, rec = build()
-    f = DevsSuiteFacade(top)
+    f = SimulationManager(top)
     f.reset()
     for t in (1.0, 2.0, 3.0, 10.0):
         f.simulate_to_time(t)
     top2, rec2 = build()
-    g = DevsSuiteFacade(top2)
+    g = SimulationManager(top2)
     g.reset()
     g.simulate_to_time(10.0)
     assert rec.seen == rec2.seen and len(rec.seen) == 10
@@ -121,7 +121,7 @@ def test_deep_cloning_snapshot_runs_independently():
     top.add(pulse)
     top.add(rec)
     top.add_coupling(pulse, "out", rec, "in")
-    f = DevsSuiteFacade(top)
+    f = SimulationManager(top)
     f.reset()
     f.simulate_to_time(2.0)
     clone = f.deep_cloning()
@@ -141,7 +141,7 @@ def test_input_coupled_straight_to_output_is_rejected():
     top = Digraph("top")
     top.add(inner)
     with pytest.raises(ModelStructureError, match="input straight to an output"):
-        DevsSuiteFacade(top)
+        SimulationManager(top)
 
 
 def test_sim_inject_at_an_event_time_runs_lambda_before_delta():
@@ -154,7 +154,7 @@ def test_sim_inject_at_an_event_time_runs_lambda_before_delta():
         top.add(c)
     top.add_coupling(pulse, "out", rec, "in")
     top.add_coupling(top, "in", ext, "in")
-    f = DevsSuiteFacade(top)
+    f = SimulationManager(top)
     f.reset()
     f.get_simulator().sim_inject(1.0, "in", "x")
     assert rec.seen == [(1.0, 0)]
@@ -169,7 +169,7 @@ def test_heap_stays_bounded_when_receivers_keep_rescheduling():
     from timeout_model import build
 
     model = build(n=50, period=0.01, timeout=1.0)
-    f = DevsSuiteFacade(model)
+    f = SimulationManager(model)
     f.reset()
     f.simulate_to_time(3.0)
     sim = f.get_simulator()

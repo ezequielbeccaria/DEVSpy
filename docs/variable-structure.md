@@ -26,7 +26,7 @@ DEVSpy follows Barros' Dynamic Structure DEVS:
   transition at `t` sees the structure that was in force when the round began,
   and the outputs of `t` are routed by it. (Applying changes mid-round would
   make a model's input depend on the order in which its siblings transition.)
-- **New atomics** are initialized at the current time (`facade.time`, the
+- **New atomics** are initialized at the current time (`manager.time`, the
   time of the last event). They can be imminent in a later round at the same
   `t`.
 - **Removed atomics** leave the schedule. Models that stay keep their state

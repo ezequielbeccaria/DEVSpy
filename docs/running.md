@@ -1,13 +1,13 @@
 # Running simulations
 
-`DevsSuiteFacade` wraps an atomic model or a `Digraph` and offers several ways
+`SimulationManager` wraps an atomic model or a `Digraph` and offers several ways
 to run it. All of them follow the same Parallel DEVS round: λ for the imminent
 models, routing, then δ for the imminent models and the receivers.
 
 ## Time and iteration limits
 
 ```python
-f = DevsSuiteFacade(model)
+f = SimulationManager(model)
 f.reset()                       # initialize at t = 0 (optional: the first run does it)
 f.simulate_to_time(100.0)       # every event with t_n <= 100
 f.simulate_to_time(0.0, 50.0)   # re-initialize at t0, run to t1
@@ -104,4 +104,4 @@ logging.getLogger("devspy").setLevel(logging.DEBUG)
 | `ModelStructureError` | Invalid network: duplicate names, couplings to unknown components or undeclared ports, input coupled straight to output, a model coupled to itself |
 | `ZeroTimeLoopError` | More than `max_rounds_per_instant` (100 000) rounds at one time: a model that never advances time |
 | `ValueError` | `inject`/`sim_inject` outside `[t_l, t_n]` or on an undeclared port |
-| `NoModelSetError` | A facade method called before a model was set |
+| `NoModelSetError` | A manager method called before a model was set |

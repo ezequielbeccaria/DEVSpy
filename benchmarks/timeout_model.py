@@ -8,7 +8,11 @@ import resource
 import sys
 import time
 
-from devspy import Atomic, DevsSuiteFacade, Digraph
+from devspy import Atomic, Digraph
+try:
+    from devspy import SimulationManager
+except ImportError:  # DEVSpy < 0.3, when comparing against older checkouts
+    from devspy import DevsSuiteFacade as SimulationManager
 
 
 class Broadcaster(Atomic):
@@ -58,7 +62,7 @@ def build(n, period, timeout):
 
 if __name__ == "__main__":
     n, period, timeout, end = int(sys.argv[1]), float(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4])
-    f = DevsSuiteFacade(build(n, period, timeout))
+    f = SimulationManager(build(n, period, timeout))
     f.reset()
     t0 = time.perf_counter()
     f.simulate_to_time(end)

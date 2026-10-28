@@ -108,8 +108,8 @@ A water tank with random inflow and an outflow valve. The **agent is ordinary
 Python code** outside the DEVS model, as in a gym-style RL loop:
 
 ```python
-[(t, obs)] = facade.advance(stop_on_output=True)   # run to the next observation
-facade.inject("valve", policy(obs["level"][0]))    # answer at the same instant
+[(t, obs)] = manager.advance(stop_on_output=True)   # run to the next observation
+manager.inject("valve", policy(obs["level"][0]))    # answer at the same instant
 ```
 
 After a warm-up the script takes a `snapshot()`, then runs two policies

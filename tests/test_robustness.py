@@ -5,7 +5,7 @@ import pytest
 from devspy import (
     Atomic,
     Bag,
-    DevsSuiteFacade,
+    SimulationManager,
     Digraph,
     ModelStructureError,
     TimeAtomicSimulator,
@@ -185,15 +185,15 @@ def test_finite_zero_time_burst_within_the_limit_runs():
 
 
 # --- initialization -----------------------------------------------------------
-def test_facade_digraph_initializes_once_with_or_without_reset():
+def test_manager_digraph_initializes_once_with_or_without_reset():
     g, src, snk = _pair()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     assert src.inits == 0
     f.simulate_to_time(3.0)  # no reset(): the first run initializes
     assert src.inits == 1 and snk.seen == [0, 1, 2]
 
     g, src, snk = _pair()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.reset()
     f.simulate_to_time(3.0)
     assert src.inits == 1 and snk.seen == [0, 1, 2]
@@ -201,7 +201,7 @@ def test_facade_digraph_initializes_once_with_or_without_reset():
 
 def test_atomic_simulate_to_time_gates_on_time_not_iterations():
     t = Ticker(period=0.5)
-    f = DevsSuiteFacade(t)
+    f = SimulationManager(t)
     f.simulate_to_time(2.0)
     assert t.ticks == 4  # events at 0.5, 1.0, 1.5, 2.0
     f.simulate_iterations(3)
@@ -216,7 +216,7 @@ def test_coordinator_injection_out_of_range_or_undeclared_port_raises():
     g.add(snk)
     g.add(Ticker())  # next event at 1.0
     g.add_coupling(g, "in", snk, "in")
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.reset()
     sim = f.get_simulator()
     with pytest.raises(ValueError, match="elapsed time 1.5"):
@@ -259,7 +259,7 @@ def test_default_deltcon_passes_zero_elapsed_time_to_deltext():
     g.add(src)
     g.add(probe)
     g.add_coupling(src, "tick", probe, "in")
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.simulate_to_time(2.0)
     # Both tick at 1.0 and 2.0: every input is confluent with the probe's own event.
     assert probe.elapsed == [0.0, 0.0]
@@ -290,7 +290,7 @@ def test_fraction_time_keeps_simultaneous_events_simultaneous():
         for m in (Every("fast", tenth), Every("slow", three_tenths)):
             g.add(m)
             g.add_coupling(m, "out", g, "out")
-        return DevsSuiteFacade(g).advance(three_tenths + tenth / 2)
+        return SimulationManager(g).advance(three_tenths + tenth / 2)
 
     # Floats: 0.1 + 0.1 + 0.1 != 0.3, so "fast" and "slow" fire in separate rounds.
     assert len(run(0.1, 0.3)) == 4
