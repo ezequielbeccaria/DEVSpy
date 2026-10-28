@@ -8,7 +8,7 @@ narrative explanations see the guides: [Running simulations](running.md),
 from devspy import (
     Atomic, Digraph, Coupled, Couprel, Bag,
     DevsBase, IOBasicDevs,
-    DevsSuiteFacade, Observer,
+    SimulationManager, Observer,
     NoModelSetError, ModelStructureError, ZeroTimeLoopError,
     AtomicSimulator, CoupledSimulator, Coordinator,
     TimeAtomicSimulator, TimeCoordinator,
@@ -18,13 +18,13 @@ from devspy import (
 
 ---
 
-## `DevsSuiteFacade`
+## `SimulationManager`
 
 The headless entry point. Wraps a `TimeAtomicSimulator` or `TimeCoordinator`
 depending on what model you give it.
 
 ```python
-DevsSuiteFacade(model=None)
+SimulationManager(model=None)
 ```
 
 Accepts an `Atomic`, a `Digraph`, a preconfigured `TimeCoordinator`, or `None`
@@ -52,7 +52,7 @@ Raises `NoModelSetError` if a `simulate_*` is called before any model is set.
 ### Driving a simulation from outside (gym-style)
 
 ```python
-f = DevsSuiteFacade(env)                  # a Digraph with input "action", output "obs"
+f = SimulationManager(env)                  # a Digraph with input "action", output "obs"
 obs = f.advance(stop_on_output=True)      # [(t, {"obs": [...]})]
 f.inject("action", a)                     # at f.time, i.e. e = 0 after the observation
 obs = f.advance(stop_on_output=True)
@@ -186,7 +186,7 @@ The semantics are DSDEVS:
 
 - A change made during the round at `t` takes effect **after** that round, so
   every transition at `t` sees the old structure.
-- New atomics are initialized at the current time (`facade.time`, the last
+- New atomics are initialized at the current time (`manager.time`, the last
   event) and can be imminent in a following round at the same `t`.
 - Removed atomics leave the schedule. Models that stay keep their state.
 - The new network is validated. A rejected change made outside a round is
@@ -229,7 +229,7 @@ def out(self):                      # return a Bag; {} means no output
 
 ## Simulators
 
-You normally don't construct these directly — `DevsSuiteFacade` does it.
+You normally don't construct these directly — `SimulationManager` does it.
 
 | Class                  | Wraps                              | Key extra method                                   |
 |------------------------|------------------------------------|----------------------------------------------------|
@@ -247,7 +247,7 @@ never called. Both `AtomicSimulator` and `Coordinator` also provide:
 | `inject_at(t, bag)` | Deliver `bag` on input ports at absolute time `t` (`t_l <= t <= t_n`). Confluent if `t == t_n`. |
 | `sim_inject(e, port, value)` / `sim_inject(e, bag)` | Same, `e` after the last event. |
 | `inject_to(model, t, bag)` | Deliver straight to an atomic's input ports (used for activity results). |
-| `snapshot()` / `restore(s)` | What the facade's `snapshot`/`restore` call. |
+| `snapshot()` / `restore(s)` | What `SimulationManager.snapshot`/`restore` call. |
 | `stop_simulation()` | End the running loop after the current round. |
 | `observers` | The list of attached `Observer`s. |
 | `max_rounds_per_instant` | Zero-time loop guard (default 100 000, `None` disables). |
@@ -274,4 +274,4 @@ All three give identical results.
 | `ModelStructureError` (a `ValueError`) | Building a coordinator for an invalid network: duplicate component names in a digraph (or a component named like its digraph), a coupling to an unknown component or an undeclared port, an input coupled straight to an output, or an atomic whose output reaches its own input (directly or through the hierarchy). |
 | `ZeroTimeLoopError` (a `RuntimeError`) | A run spends more than `max_rounds_per_instant` rounds (default 100 000) at one simulated time, typically a `ta() == 0` loop. Set the attribute on the simulator (or class) to raise the limit, or to `None` to disable the check. |
 | `ValueError`          | `sim_inject` outside `[0, t_n - t_l]` or on an undeclared input port. |
-| `NoModelSetError`     | A facade method runs before any model was set.                |
+| `NoModelSetError`     | A manager method runs before any model was set.                |

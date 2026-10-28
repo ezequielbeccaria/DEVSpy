@@ -2,7 +2,7 @@
 
 import pytest
 
-from devspy import Atomic, DevsSuiteFacade, Digraph, ModelStructureError
+from devspy import Atomic, SimulationManager, Digraph, ModelStructureError
 
 
 class Pulse(Atomic):
@@ -62,7 +62,7 @@ def _net(*models):
 
 def test_model_added_during_a_transition_starts_after_the_round():
     factory = Factory("factory")
-    f = DevsSuiteFacade(_net(factory))
+    f = SimulationManager(_net(factory))
     f.advance(10.0)
     sink = factory.sink
     # Added in the δ of t=2: it was not there for the output at t=2, starts at 2,
@@ -76,7 +76,7 @@ def test_model_added_during_a_transition_starts_after_the_round():
 def test_removed_model_leaves_the_schedule():
     a, b = Pulse("a"), Pulse("b", period=0.5)
     g = _net(a, b)
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.advance(1.0)
     g.remove(b)  # outside a round: applied immediately
     f.advance(5.0)
@@ -87,7 +87,7 @@ def test_removed_model_leaves_the_schedule():
 def test_model_added_between_runs_starts_at_the_current_time():
     a = Pulse("a")
     g = _net(a)
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.advance(2.5)
     assert f.time == 2.0  # the clock is at the last event
     late = Pulse("late")
@@ -99,7 +99,7 @@ def test_model_added_between_runs_starts_at_the_current_time():
 def test_rejected_change_outside_a_round_is_undone():
     a, s = Pulse("a"), Sink("s")
     g = _net(a, s)
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.advance(1.0)
     with pytest.raises(ModelStructureError, match="no input port 'nope'"):
         g.add_coupling(a, "out", s, "nope")
@@ -117,7 +117,7 @@ def test_invalid_change_inside_a_round_raises_at_the_end_of_it():
             super().deltint()
             self.add_coupling(self, "out", self, "out")  # an output is no input
 
-    f = DevsSuiteFacade(_net(Bad("bad")))
+    f = SimulationManager(_net(Bad("bad")))
     with pytest.raises(ModelStructureError):
         f.advance(5.0)
 
@@ -126,7 +126,7 @@ def test_editing_before_reset_is_fine():
     a = Pulse("a")
     g = Digraph("g")
     g.add(a)
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     s = Sink("s")
     g.add(s)
     g.add_coupling(a, "out", s, "in")
@@ -138,7 +138,7 @@ def test_editing_before_reset_is_fine():
 def test_snapshot_refuses_a_different_structure():
     a = Pulse("a")
     g = _net(a)
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.advance(1.0)
     snap = f.snapshot()
     g.add(Pulse("b"))
@@ -153,6 +153,6 @@ def test_structure_changes_inside_nested_digraphs():
     inner.add(factory)
     top = Digraph("top")
     top.add(inner)
-    f = DevsSuiteFacade(top)
+    f = SimulationManager(top)
     f.advance(10.0)
     assert factory.sink.seen == [(3.0, 2), (4.0, 3)]

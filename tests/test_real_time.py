@@ -7,7 +7,7 @@ import time
 
 import pytest
 
-from devspy import Atomic, DevsSuiteFacade, Digraph, WallClock
+from devspy import Atomic, SimulationManager, Digraph, WallClock
 from tests import reference_pdevs
 from tests.test_reference_pdevs import _injections, _multiset, _with_root_input, random_model
 
@@ -105,7 +105,7 @@ def _net():
 def test_events_happen_at_their_wall_time(speed):
     g, _, _ = _net()
     clock = VirtualClock()
-    runner = DevsSuiteFacade(g).real_time(speed=speed, clock=clock)
+    runner = SimulationManager(g).real_time(speed=speed, clock=clock)
     walls = []
     outputs = runner.run(until=3.0, on_output=lambda t, y: walls.append((t, clock.now())))
     assert outputs == [(1.0, {"out": [0]}), (2.0, {"out": [1]}), (3.0, {"out": [2]})]
@@ -115,7 +115,7 @@ def test_events_happen_at_their_wall_time(speed):
 def test_posted_input_arrives_at_the_matching_simulated_time():
     g, _, rec = _net()
     clock = VirtualClock()
-    runner = DevsSuiteFacade(g).real_time(speed=2.0, clock=clock)
+    runner = SimulationManager(g).real_time(speed=2.0, clock=clock)
     clock.at(0.75, lambda: runner.post("in", "a"))  # wall 0.75 -> t = 1.5
     outputs = runner.run(until=2.0)
     assert rec.seen == [(1.5, "in", "a")]
@@ -125,7 +125,7 @@ def test_posted_input_arrives_at_the_matching_simulated_time():
 def test_input_arriving_with_a_due_event_follows_it():
     g, _, rec = _net()
     clock = VirtualClock()
-    runner = DevsSuiteFacade(g).real_time(clock=clock)
+    runner = SimulationManager(g).real_time(clock=clock)
     clock.at(1.0, lambda: runner.post("in", "a"))
     outputs = runner.run(until=1.0)
     assert rec.seen == [(1.0, "in", "a")]
@@ -140,7 +140,7 @@ def test_a_late_simulation_catches_up_in_order():
             return item
 
     g, _, _ = _net()
-    runner = DevsSuiteFacade(g).real_time(clock=Laggy())
+    runner = SimulationManager(g).real_time(clock=Laggy())
     outputs = runner.run(until=6.0)
     assert [t for t, _ in outputs] == [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
 
@@ -148,7 +148,7 @@ def test_a_late_simulation_catches_up_in_order():
 def test_stop_ends_the_run():
     g, _, _ = _net()
     clock = VirtualClock()
-    runner = DevsSuiteFacade(g).real_time(clock=clock)
+    runner = SimulationManager(g).real_time(clock=clock)
     clock.at(2.5, runner.stop)
     assert [t for t, _ in runner.run()] == [1.0, 2.0]
 
@@ -160,7 +160,7 @@ def test_real_time_run_matches_reference(seed):
     injections = _injections(seed)
     model, log = random_model(seed)
     clock = VirtualClock()
-    runner = DevsSuiteFacade(_with_root_input(model)).real_time(speed=2.0, clock=clock)
+    runner = SimulationManager(_with_root_input(model)).real_time(speed=2.0, clock=clock)
     for t, bag in injections:
         clock.at(t / 2, lambda bag=bag: runner.post(bag))
     outputs = runner.run(until=40.0)
@@ -176,7 +176,7 @@ def test_real_time_run_matches_reference(seed):
 # --- with real threads and the real clock -----------------------------------------------
 def test_post_from_another_thread():
     g, _, rec = _net()
-    runner = DevsSuiteFacade(g).real_time(speed=1000.0)  # 1 ms per time unit
+    runner = SimulationManager(g).real_time(speed=1000.0)  # 1 ms per time unit
 
     def feeder():
         time.sleep(0.01)
@@ -205,7 +205,7 @@ def test_activity_result_arrives_as_input():
     g.add(w)
     g.add_coupling(g, "in", w, "in")
     g.add_coupling(w, "out", g, "out")
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     runner = f.real_time(speed=1000.0)
     runner.post("in", 21)
     got = []
@@ -234,7 +234,7 @@ def test_activity_error_stops_the_run():
     f_model = Failing("f")
     g.add(f_model)
     g.add_coupling(g, "in", f_model, "in")
-    runner = DevsSuiteFacade(g).real_time(speed=1000.0)
+    runner = SimulationManager(g).real_time(speed=1000.0)
     runner.post("in", 1)
     with pytest.raises(ZeroDivisionError):
         runner.run(until=1e6)
@@ -246,6 +246,6 @@ def test_activities_need_a_real_time_run():
     w = Worker("w")
     g.add(w)
     g.add_coupling(g, "in", w, "in")
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     with pytest.raises(RuntimeError, match="real-time run"):
         f.inject("in", 1)

@@ -3,7 +3,7 @@ import pytest
 from devspy import (
     Atomic,
     Bag,
-    DevsSuiteFacade,
+    SimulationManager,
     Digraph,
     NoModelSetError,
 )
@@ -41,61 +41,61 @@ class Sink(Atomic):
         self.seen.extend(x.get("in", ()))
 
 
-def test_facade_without_model_raises():
-    facade = DevsSuiteFacade()
+def test_manager_without_model_raises():
+    manager = SimulationManager()
     with pytest.raises(NoModelSetError):
-        facade.simulate_iterations(1)
+        manager.simulate_iterations(1)
     with pytest.raises(NoModelSetError):
-        facade.reset()
+        manager.reset()
 
 
-def test_facade_atomic_simulate_to_time():
+def test_manager_atomic_simulate_to_time():
     t = Ticker()
-    facade = DevsSuiteFacade(t)
-    facade.reset()
-    facade.simulate_to_time(5.0)
-    assert facade.is_simulation_done()
+    manager = SimulationManager(t)
+    manager.reset()
+    manager.simulate_to_time(5.0)
+    assert manager.is_simulation_done()
     assert t.ticks == 5
 
 
-def test_facade_digraph_simulate_to_time():
+def test_manager_digraph_simulate_to_time():
     g = Digraph("g")
     src = Ticker()
     snk = Sink()
     g.add(src)
     g.add(snk)
     g.add_coupling(src, "tick", snk, "in")
-    facade = DevsSuiteFacade(g)
-    facade.reset()
-    facade.simulate_to_time(3.0)
+    manager = SimulationManager(g)
+    manager.reset()
+    manager.simulate_to_time(3.0)
     assert len(snk.seen) == 3
 
 
-def test_facade_simulate_iterations_on_atomic():
+def test_manager_simulate_iterations_on_atomic():
     t = Ticker()
-    facade = DevsSuiteFacade(t)
-    facade.reset()
-    facade.simulate_iterations(4)
+    manager = SimulationManager(t)
+    manager.reset()
+    manager.simulate_iterations(4)
     assert t.ticks == 4
 
 
-def test_facade_simulate_to_time_with_init_and_end():
+def test_manager_simulate_to_time_with_init_and_end():
     t = Ticker()
-    facade = DevsSuiteFacade(t)
-    facade.reset()
-    facade.simulate_to_time(0.0, 3.0)
+    manager = SimulationManager(t)
+    manager.reset()
+    manager.simulate_to_time(0.0, 3.0)
     assert t.ticks == 3
 
 
-def test_facade_deep_cloning_is_independent():
+def test_manager_deep_cloning_is_independent():
     t = Ticker()
-    facade = DevsSuiteFacade(t)
-    facade.reset()
-    facade.simulate_to_time(2.0)
+    manager = SimulationManager(t)
+    manager.reset()
+    manager.simulate_to_time(2.0)
 
-    snapshot = facade.deep_cloning()
-    # Advance the live facade; the snapshot must remain frozen.
-    facade.simulate_to_time(0.0, 5.0)
+    snapshot = manager.deep_cloning()
+    # Advance the live manager; the snapshot must remain frozen.
+    manager.simulate_to_time(0.0, 5.0)
 
     from devspy.simulation.time_atomic_simulator import TimeAtomicSimulator
     assert isinstance(snapshot, TimeAtomicSimulator)

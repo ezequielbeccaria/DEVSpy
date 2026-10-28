@@ -1,5 +1,5 @@
 from devspy.exceptions import ModelStructureError, NoModelSetError, ZeroTimeLoopError
-from devspy.facade import DevsSuiteFacade
+from devspy.manager import SimulationManager
 from devspy.modeling import (
     Atomic,
     Bag,
@@ -31,13 +31,13 @@ __all__ = [
     "CoupledSimulator",
     "Couprel",
     "DevsBase",
-    "DevsSuiteFacade",
     "Digraph",
     "IOBasicDevs",
     "ModelStructureError",
     "NoModelSetError",
     "Observer",
     "RealTimeRunner",
+    "SimulationManager",
     "TimeAtomicSimulator",
     "TimeCoordinator",
     "WallClock",

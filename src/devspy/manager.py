@@ -14,12 +14,15 @@ from devspy.simulation.time_atomic_simulator import TimeAtomicSimulator
 from devspy.simulation.time_coordinator import TimeCoordinator
 
 
-class DevsSuiteFacade:
-    """Started as a port of DEVSJAVA's `facade.DevsSuiteFacade`.
+class SimulationManager:
+    """Manages the life cycle of one simulation: the public entry point.
 
-    Entry point for headless DEVS simulation. Accepts an atomic or digraph
-    model (or a preconfigured `TimeCoordinator`), and exposes iteration- and
-    time-limited simulation methods.
+    Given an atomic or digraph model (or a preconfigured `TimeCoordinator`) it
+    creates the right simulator and drives it: initialization, time- and
+    iteration-limited runs, stepping (`advance`/`inject`), observers,
+    snapshots and real-time runs. The DEVS semantics live in the simulators
+    (`devspy.simulation`); this class holds no simulation logic of its own.
+    It started as a port of DEVSJAVA's `facade.DevsSuiteFacade`.
     """
 
     def __init__(

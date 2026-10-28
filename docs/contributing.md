@@ -44,7 +44,7 @@ DEVSpy/
 │   ├── simulation/      # Coordinator (flat kernel), Time*, CoupledSimulator,
 │   │                    # observer.py (observers, snapshots), real_time.py
 │   ├── util/            # logging shim
-│   ├── facade.py        # DevsSuiteFacade: the public entry point
+│   ├── manager.py        # SimulationManager: the public entry point
 │   └── exceptions.py
 ├── tests/               # pytest, one file per topic; reference_pdevs.py is the oracle
 ├── pyproject.toml       # Poetry-managed

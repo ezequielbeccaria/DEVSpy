@@ -30,7 +30,7 @@ An atomic model defines a `(phase, sigma)` state and the four DEVS transition
 functions: `initialize`, `deltint`, `deltext`, `out` (and optionally `deltcon`).
 
 ```python
-from devspy import Atomic, Bag, DevsSuiteFacade
+from devspy import Atomic, Bag, SimulationManager
 
 
 class Beeper(Atomic):
@@ -51,9 +51,9 @@ class Beeper(Atomic):
         return {"beep": [self._count + 1]}
 
 
-facade = DevsSuiteFacade(Beeper())
-facade.reset()
-facade.simulate_to_time(5.0)
+manager = SimulationManager(Beeper())
+manager.reset()
+manager.simulate_to_time(5.0)
 ```
 
 ## A minimal coupled model
@@ -61,7 +61,7 @@ facade.simulate_to_time(5.0)
 A coupled model is a `Digraph` with components and couplings between their ports:
 
 ```python
-from devspy import Atomic, DevsSuiteFacade, Digraph
+from devspy import Atomic, SimulationManager, Digraph
 
 
 class Source(Atomic):
@@ -100,9 +100,9 @@ g.add(src)
 g.add(snk)
 g.add_coupling(src, "out", snk, "in")
 
-facade = DevsSuiteFacade(g)
-facade.reset()
-facade.simulate_to_time(10.0)
+manager = SimulationManager(g)
+manager.reset()
+manager.simulate_to_time(10.0)
 print(snk.received)  # 10
 ```
 
@@ -119,8 +119,8 @@ from your own code, use `advance` and `inject`:
 ```python
 g.add_outport("out")
 g.add_coupling(src, "out", g, "out")      # expose the source's output
-facade = DevsSuiteFacade(g)
-print(facade.advance(3.0))                # [(1.0, {'out': [1]}), (2.0, {'out': [1]}), (3.0, {'out': [1]})]
+manager = SimulationManager(g)
+print(manager.advance(3.0))                # [(1.0, {'out': [1]}), (2.0, {'out': [1]}), (3.0, {'out': [1]})]
 ```
 
 See [Running simulations](running.md) for stepping, snapshots and observers.

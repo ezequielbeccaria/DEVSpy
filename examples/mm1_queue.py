@@ -17,7 +17,7 @@ import statistics as pystats
 from collections import deque
 from dataclasses import dataclass
 
-from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
+from devspy import Atomic, Bag, SimulationManager, Digraph
 
 
 @dataclass
@@ -196,9 +196,9 @@ def build(
 
 def run(lam: float = 1.0, mu: float = 1.5, seed: int = 42, end_time: float = 1000.0) -> Result:
     mm1, _gen, _q, srv, stats = build(lam, mu, seed)
-    facade = DevsSuiteFacade(mm1)
-    facade.reset()
-    facade.simulate_to_time(end_time)
+    manager = SimulationManager(mm1)
+    manager.reset()
+    manager.simulate_to_time(end_time)
 
     by_id = {jid: t for t, jid in stats.arrivals}
     waits = [

@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
+from devspy import Atomic, Bag, SimulationManager, Digraph
 
 GEN_PERIOD = 2.0
 PROCESS_TIME = 3.0
@@ -130,9 +130,9 @@ def build() -> tuple[Digraph, Transducer]:
 
 def run(end_time: float = 30.0) -> Transducer:
     gpt, trans = build()
-    facade = DevsSuiteFacade(gpt)
-    facade.reset()
-    facade.simulate_to_time(end_time)
+    manager = SimulationManager(gpt)
+    manager.reset()
+    manager.simulate_to_time(end_time)
     return trans
 
 

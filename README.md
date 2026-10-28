@@ -34,7 +34,7 @@ git clone https://github.com/ezequielbeccaria/DEVSpy.git && cd DEVSpy && poetry 
 ## Example
 
 ```python
-from devspy import Atomic, DevsSuiteFacade, Digraph
+from devspy import Atomic, SimulationManager, Digraph
 
 
 class Source(Atomic):
@@ -83,7 +83,7 @@ g.add(dbl)
 g.add_coupling(src, "out", dbl, "in")
 g.add_coupling(dbl, "out", g, "out")
 
-f = DevsSuiteFacade(g)
+f = SimulationManager(g)
 print(f.advance(3.0))   # [(1.5, {'out': [0]}), (2.5, {'out': [2]})]
 ```
 

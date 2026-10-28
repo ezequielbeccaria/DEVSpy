@@ -1,6 +1,6 @@
 import logging
 
-from devspy import Atomic, DevsSuiteFacade, Digraph
+from devspy import Atomic, SimulationManager, Digraph
 from devspy.util.logging import FULL, set_level
 
 
@@ -25,7 +25,7 @@ def _run(*models):
     g = Digraph("top")
     for m in models:
         g.add(m)
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.reset()
     f.simulate_to_time(3.0)
 

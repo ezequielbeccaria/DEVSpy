@@ -14,7 +14,7 @@ from fractions import Fraction
 
 import pytest
 
-from devspy import Atomic, DevsSuiteFacade, Digraph
+from devspy import Atomic, SimulationManager, Digraph
 from devspy.simulation.coordinator import Coordinator
 from tests import reference_pdevs
 
@@ -183,7 +183,7 @@ def random_model(seed, spawners=False, exact=False):
 
 def _run_devspy(seed, end, heap_limit=None):
     model, log = random_model(seed)
-    f = DevsSuiteFacade(model)
+    f = SimulationManager(model)
     f.reset()
     sim = f.get_simulator()
     if heap_limit is not None:
@@ -235,7 +235,7 @@ def test_external_injections_match_reference(seed):
     injections = [(t, {"in": [rng.randint(1, 9) for _ in range(rng.randint(1, 3))]}) for t in times]
 
     model, log = random_model(seed)
-    f = DevsSuiteFacade(_with_root_input(model))
+    f = SimulationManager(_with_root_input(model))
     f.reset()
     sim = f.get_simulator()
     outputs = []
@@ -279,7 +279,7 @@ def _reference_with_injections(seed):
 @pytest.mark.parametrize("seed", range(150))
 def test_step_api_matches_reference(seed, scheduler):
     model, _ = random_model(seed)
-    f = DevsSuiteFacade(_with_root_input(model))
+    f = SimulationManager(_with_root_input(model))
     outputs = []
     for t, bag in _injections(seed):
         outputs += f.inject(bag, at=t)
@@ -292,7 +292,7 @@ def test_step_api_matches_reference(seed, scheduler):
 @pytest.mark.parametrize("seed", range(100))
 def test_snapshot_restore_replays_the_reference(seed, scheduler):
     model, _ = random_model(seed)
-    f = DevsSuiteFacade(_with_root_input(model))
+    f = SimulationManager(_with_root_input(model))
     injections = _injections(seed)
     early = [(t, b) for t, b in injections if t < 13.3]
     late = [(t, b) for t, b in injections if t >= 13.3]
@@ -325,7 +325,7 @@ class _Recorder:
 @pytest.mark.parametrize("seed", range(100))
 def test_observer_sees_every_transition_without_perturbing(seed):
     model, _ = random_model(seed)
-    f = DevsSuiteFacade(_with_root_input(model))
+    f = SimulationManager(_with_root_input(model))
     rec = _Recorder()
     f.add_observer(rec)
     for t, bag in _injections(seed):
@@ -353,7 +353,7 @@ def test_observer_sees_every_transition_without_perturbing(seed):
 @pytest.mark.parametrize("seed", range(200))
 def test_variable_structure_matches_reference(seed, scheduler):
     model, log = random_model(seed, spawners=True)
-    f = DevsSuiteFacade(_with_root_input(model))
+    f = SimulationManager(_with_root_input(model))
     outputs = []
     for t, bag in _injections(seed):
         outputs += f.inject(bag, at=t)
@@ -370,7 +370,7 @@ def test_variable_structure_cases_actually_change_the_structure():
     for seed in range(200):
         _, log = random_model(seed, spawners=True)
         model, log = random_model(seed, spawners=True)
-        DevsSuiteFacade(model).advance(40.0)
+        SimulationManager(model).advance(40.0)
         changes += sum(1 for entries in log.values() for e in entries if e[1] in ("spawn", "remove"))
     assert changes > 200
 
@@ -378,7 +378,7 @@ def test_variable_structure_cases_actually_change_the_structure():
 @pytest.mark.parametrize("seed", range(100))
 def test_exact_fraction_time_matches_reference(seed):
     model, log = random_model(seed, exact=True)
-    outputs = DevsSuiteFacade(model).advance(40)
+    outputs = SimulationManager(model).advance(40)
     ref_model, ref_log = random_model(seed, exact=True)
     ref_outputs = reference_pdevs.run(ref_model, 40)
     assert log == ref_log
@@ -389,7 +389,7 @@ def test_exact_fraction_time_matches_reference(seed):
 
 def test_reset_replays_like_a_fresh_reference_run():
     model, log = random_model(7)
-    f = DevsSuiteFacade(model)
+    f = SimulationManager(model)
     for _ in range(3):
         f.reset()
         f.simulate_to_time(40.0)

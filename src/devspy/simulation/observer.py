@@ -9,7 +9,7 @@ from devspy.modeling.devs import Bag
 class Observer:
     """Receives the λ and δ events of a simulation; override what you need.
 
-    Attach with `DevsSuiteFacade.add_observer` (or append to a simulator's
+    Attach with `SimulationManager.add_observer` (or append to a simulator's
     `observers`). With no observer attached the kernel pays one emptiness check
     per transition and per output.
     """

@@ -9,7 +9,10 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from devspy import DevsSuiteFacade  # noqa: E402
+try:
+    from devspy import SimulationManager
+except ImportError:  # DEVSpy < 0.3, when comparing against older checkouts
+    from devspy import DevsSuiteFacade as SimulationManager
 from devstone_model import STATS, build  # noqa: E402
 
 
@@ -20,7 +23,7 @@ def main():
         for k in STATS:
             STATS[k] = 0
         t0 = time.perf_counter()
-        f = DevsSuiteFacade(build(w, d, n))
+        f = SimulationManager(build(w, d, n))
         f.reset()
         t1 = time.perf_counter()
         f.simulate_to_time(1e18)

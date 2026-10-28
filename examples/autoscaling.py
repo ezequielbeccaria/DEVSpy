@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import random
 
-from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
+from devspy import Atomic, Bag, SimulationManager, Digraph
 
 
 class Generator(Atomic):
@@ -157,7 +157,7 @@ def build(seed: int = 1) -> tuple[Digraph, Dispatcher]:
 
 def run(seed: int = 1, end: float = 80.0) -> Dispatcher:
     g, disp = build(seed)
-    DevsSuiteFacade(g).advance(end)
+    SimulationManager(g).advance(end)
     return disp
 
 

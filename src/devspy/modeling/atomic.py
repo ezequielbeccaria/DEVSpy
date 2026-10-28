@@ -81,7 +81,7 @@ class Atomic(IOBasicDevs):
     def start_activity(self, fn, *args, port: str = "activity", **kwargs):
         """Run `fn(*args, **kwargs)` in a thread; its return value arrives later
         as external input on this model's input `port`. Only during a real-time
-        run (`DevsSuiteFacade.real_time().run()`): in logical time, model a known
+        run (`SimulationManager.real_time().run()`): in logical time, model a known
         duration with `hold_in` instead. Returns an `Activity` (`cancel()`)."""
         from devspy.simulation.real_time import Activity
 
@@ -91,7 +91,7 @@ class Atomic(IOBasicDevs):
         coordinator = parent.get_coordinator() if parent is not None else None
         runner = getattr(coordinator, "_rt_runner", None)
         if runner is None:
-            raise RuntimeError("activities need a real-time run: DevsSuiteFacade.real_time().run()")
+            raise RuntimeError("activities need a real-time run: SimulationManager.real_time().run()")
         return Activity(runner, self, port, fn, args, kwargs)
 
     # --- DEVS contract -----------------------------------------------------

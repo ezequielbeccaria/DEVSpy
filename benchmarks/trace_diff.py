@@ -17,7 +17,11 @@ import os
 import random
 import sys
 
-from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
+from devspy import Atomic, Bag, Digraph
+try:
+    from devspy import SimulationManager
+except ImportError:  # DEVSpy < 0.3, when comparing against older checkouts
+    from devspy import DevsSuiteFacade as SimulationManager
 from devspy.simulation.atomic_simulator import AtomicSimulator
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -180,7 +184,7 @@ def random_model(seed: int) -> Digraph:
 
 
 def run_digraph(model, end):
-    f = DevsSuiteFacade(model)
+    f = SimulationManager(model)
     f.reset()
     f.simulate_to_time(end)
 

@@ -14,7 +14,11 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-from devspy import Atomic, DevsSuiteFacade, Digraph  # noqa: E402
+from devspy import Atomic, Digraph  # noqa: E402
+try:
+    from devspy import SimulationManager
+except ImportError:  # DEVSpy < 0.3, when comparing against older checkouts
+    from devspy import DevsSuiteFacade as SimulationManager
 from devspy.simulation.coordinator import Coordinator  # noqa: E402
 
 
@@ -42,7 +46,7 @@ def sparse(n):
 def time_run(make, run, reps):
     ts = []
     for _ in range(reps):
-        f = DevsSuiteFacade(make())
+        f = SimulationManager(make())
         f.reset()
         t0 = time.perf_counter()
         run(f)

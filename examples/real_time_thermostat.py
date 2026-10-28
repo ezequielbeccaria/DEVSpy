@@ -13,7 +13,7 @@ import math
 import threading
 import time
 
-from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
+from devspy import Atomic, Bag, SimulationManager, Digraph
 
 
 def slow_average(readings: list[float]) -> float:
@@ -79,7 +79,7 @@ def build() -> Digraph:
 
 def run(minutes: float = 30.0, speed: float = 20.0) -> list[tuple[float, Bag]]:
     """Simulate `minutes` (simulated time unit: 1 minute) in real time."""
-    runner = DevsSuiteFacade(build()).real_time(speed=speed)
+    runner = SimulationManager(build()).real_time(speed=speed)
 
     def sensor() -> None:
         # One reading per simulated minute: a slow oscillation around 20 °C.

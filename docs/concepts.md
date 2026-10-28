@@ -79,7 +79,7 @@ network raises `ModelStructureError` when the simulator is built (see
 
 ## Simulators
 
-You rarely touch simulators directly: `DevsSuiteFacade` wraps the right one.
+You rarely touch simulators directly: `SimulationManager` wraps the right one.
 
 | Class                  | Wraps             | Main methods                                           |
 |------------------------|-------------------|--------------------------------------------------------|

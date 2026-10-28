@@ -24,7 +24,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 
-from devspy import Atomic, Bag, DevsSuiteFacade, Digraph
+from devspy import Atomic, Bag, SimulationManager, Digraph
 
 
 @dataclass
@@ -253,9 +253,9 @@ def run(
     end_time: float = 200.0,
 ) -> Result:
     model = build(interarrival, service_times)
-    facade = DevsSuiteFacade(model.line)
-    facade.reset()
-    facade.simulate_to_time(end_time)
+    manager = SimulationManager(model.line)
+    manager.reset()
+    manager.simulate_to_time(end_time)
 
     per_station = []
     for s in model.stations:

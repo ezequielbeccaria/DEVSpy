@@ -1,10 +1,10 @@
-"""Stepping (advance/inject), observers and snapshot/restore on the facade."""
+"""Stepping (advance/inject), observers and snapshot/restore on SimulationManager."""
 
 import random
 
 import pytest
 
-from devspy import Atomic, DevsSuiteFacade, Digraph, Observer
+from devspy import Atomic, SimulationManager, Digraph, Observer
 
 
 class Echo(Atomic):
@@ -73,7 +73,7 @@ def _clock_net():
 
 def test_advance_returns_root_outputs_instead_of_printing(capsys):
     g, _ = _clock_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     assert f.advance(3.0) == [(1.0, {"tick": [0]}), (2.0, {"tick": [1]}), (3.0, {"tick": [2]})]
     assert f.time == 3.0 and f.next_event_time == 4.0
     assert capsys.readouterr().out == ""
@@ -81,14 +81,14 @@ def test_advance_returns_root_outputs_instead_of_printing(capsys):
 
 def test_advance_can_stop_at_the_first_output():
     g, _ = _clock_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     assert f.advance(stop_on_output=True) == [(1.0, {"tick": [0]})]
     assert f.advance(stop_on_output=True) == [(2.0, {"tick": [1]})]
 
 
 def test_gym_style_loop():
     g, _ = _echo_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.reset()
     assert f.inject("in", 1, at=0.5) == []
     assert f.advance(stop_on_output=True) == [(1.5, {"out": [10]})]
@@ -100,7 +100,7 @@ def test_gym_style_loop():
 
 def test_inject_returns_outputs_of_the_rounds_it_runs_first():
     g, _ = _echo_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.inject("in", 1, at=1.0)
     # The reply at 2.0 happens before the injection at 3.0, and is returned.
     assert f.inject({"in": [5, 6]}, at=3.0) == [(2.0, {"out": [10]})]
@@ -109,7 +109,7 @@ def test_inject_returns_outputs_of_the_rounds_it_runs_first():
 
 def test_inject_at_an_event_time_is_confluent():
     g, _ = _echo_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.inject("in", 1, at=1.0)
     # The echo is due at 2.0: λ first (reply 10), then δcon with the new input.
     assert f.inject("in", 2, at=2.0) == [(2.0, {"out": [10]})]
@@ -118,7 +118,7 @@ def test_inject_at_an_event_time_is_confluent():
 
 def test_inject_into_the_past_or_on_an_unknown_port_raises():
     g, _ = _echo_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.inject("in", 1, at=2.0)
     with pytest.raises(ValueError, match="already at 2.0"):
         f.inject("in", 1, at=1.0)
@@ -129,7 +129,7 @@ def test_inject_into_the_past_or_on_an_unknown_port_raises():
 def test_inject_far_ahead_does_not_drift():
     g, echo = _echo_net()
     echo.delay = 0.1
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     t = 0.0
     for _ in range(50):
         t += 0.3
@@ -137,8 +137,8 @@ def test_inject_far_ahead_does_not_drift():
         assert f.time == t
 
 
-def test_atomic_facade_supports_the_same_api():
-    f = DevsSuiteFacade(Echo())
+def test_atomic_manager_supports_the_same_api():
+    f = SimulationManager(Echo())
     assert f.inject("in", 3, at=1.0) == []
     assert f.advance() == [(2.0, {"out": [30]})]
     snap = f.snapshot()
@@ -162,7 +162,7 @@ def test_observer_receives_outputs_and_transitions():
             self.events.append((t, model.get_name(), kind, e, x))
 
     g, _ = _echo_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     rec = Rec()
     f.add_observer(rec)
     f.inject("in", 1, at=0.5)
@@ -180,7 +180,7 @@ def test_observer_receives_outputs_and_transitions():
 
 def test_snapshot_restores_in_place_and_repeatably():
     g, clock = _clock_net()
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.advance(2.0)
     clock.rng.random()
     snap = f.snapshot()
@@ -206,7 +206,7 @@ def test_snapshot_keeps_references_between_models():
     g.add(a)
     g.add(b)
     b.partner = a  # model-to-model reference: must stay a reference
-    f = DevsSuiteFacade(g)
+    f = SimulationManager(g)
     f.advance(1.0)
     snap = f.snapshot()
     f.advance(3.0)

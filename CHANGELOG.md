@@ -7,6 +7,10 @@ and fails loudly on invalid models.
 
 ### Breaking
 
+- `DevsSuiteFacade` is renamed to `SimulationManager` (module `devspy.manager`).
+  The old name is gone: replace `from devspy import DevsSuiteFacade` with
+  `from devspy import SimulationManager`. Behaviour is unchanged.
+
 - The default `Atomic.deltcon(e, x)` is now `deltint(); deltext(0, x)`, the
   Chow & Zeigler default δcon(s, x) = δext(δint(s), 0, x). It used to pass the
   pre-`deltint` `e`. Only models that use the default `deltcon` and read `e` in
